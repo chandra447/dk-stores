@@ -1,0 +1,19 @@
+/* Remove default styles that conflict with daisyUI */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Remove default button styling that conflicts with daisyUI */
+button {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Remove default link styling that conflicts with daisyUI */
+a {
+  color: inherit;
+  text-decoration: none;
+}
