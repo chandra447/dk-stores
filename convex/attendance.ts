@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-// Removed unused import
+import { hasRegisterAccess } from "./register";
 
 // Mark employee as present for the day
 export const markEmployeePresent = mutation({
@@ -26,7 +26,13 @@ export const markEmployeePresent = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -89,7 +95,13 @@ export const markEmployeeAbsent = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -151,7 +163,13 @@ export const startEmployeeBreak = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -217,7 +235,13 @@ export const endEmployeeBreak = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -263,7 +287,13 @@ export const returnFromAbsence = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -316,7 +346,13 @@ export const markHalfDay = mutation({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 
@@ -353,7 +389,13 @@ export const getEmployeeAttendanceStatus = query({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      return null;
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       return null;
     }
 
@@ -441,7 +483,13 @@ export const getActiveAttendanceLogs = query({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      return [];
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       return [];
     }
 
@@ -510,7 +558,13 @@ export const getEmployeeAttendanceLogs = query({
     }
 
     const register = await ctx.db.get(registerLog.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
       throw new Error("Access denied");
     }
 

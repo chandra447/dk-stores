@@ -2,6 +2,35 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
+// Helper function to generate random avatar seed
+function generateRandomAvatarSeed(): string {
+  const randomNames = [
+    'Liam', 'Olivia', 'Noah', 'Emma', 'Oliver', 'Charlotte', 'James', 'Amelia',
+    'Elijah', 'Sophia', 'William', 'Isabella', 'Henry', 'Ava', 'Lucas', 'Mia',
+    'Benjamin', 'Evelyn', 'Theodore', 'Harper', 'Alexander', 'Emily', 'Daniel',
+    'Madison', 'Matthew', 'Abigail', 'Jackson', 'Sophia', 'David', 'Elizabeth'
+  ];
+  return randomNames[Math.floor(Math.random() * randomNames.length)];
+}
+
+// Helper function to check if user has access to a register (either as owner or assigned manager)
+export async function hasRegisterAccess(ctx: any, registerId: any, userId: any): Promise<boolean> {
+  // Check if user is the owner
+  const register = await ctx.db.get(registerId);
+  if (register && register.ownerId === userId) {
+    return true;
+  }
+
+  // Check if user is a manager assigned to this register
+  const managerEmployee = await ctx.db.query("employees")
+    .withIndex("byUser", (q: any) => q.eq("userId", userId))
+    .filter((q: any) => q.eq(q.field("isManager"), true))
+    .filter((q: any) => q.eq(q.field("isActive"), true))
+    .first();
+
+  return managerEmployee !== null && managerEmployee.registerId === registerId;
+}
+
 // Helper function to get start of day timestamp
 export function getStartOfDay(date: Date = new Date()): number {
   const startOfDay = new Date(date);
@@ -32,6 +61,7 @@ export const createRegister = mutation({
     const registerId = await ctx.db.insert("registers", {
       name: args.name,
       address: args.address,
+      registerAvatar: generateRandomAvatarSeed(), // Store generated avatar seed
       ownerId: userId, // Shop owner creates this register
       isActive: true,
       createdAt: Date.now(),
@@ -54,7 +84,13 @@ export const getRegister = query({
     }
 
     const register = await ctx.db.get(args.id);
-    if (!register || register.ownerId !== userId || !register.isActive) {
+    if (!register || !register.isActive) {
+      return null;
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.id, userId);
+    if (!hasAccess) {
       return null;
     }
 
@@ -62,12 +98,13 @@ export const getRegister = query({
       id: register._id,
       name: register.name,
       address: register.address,
+      registerAvatar: register.registerAvatar,
       createdAt: register.createdAt,
     };
   },
 });
 
-// Get registers for the current shop owner
+// Get registers for the current shop owner or manager
 export const getMyRegisters = query({
   args: {},
   handler: async (ctx) => {
@@ -76,17 +113,46 @@ export const getMyRegisters = query({
       return [];
     }
 
-    const registers = await ctx.db.query("registers")
+    // Get registers owned by this user (admin/owner)
+    const ownedRegisters = await ctx.db.query("registers")
       .filter(q => q.eq(q.field("ownerId"), userId))
       .filter(q => q.eq(q.field("isActive"), true))
       .collect();
 
-    return registers.map(register => ({
-      id: register._id,
-      name: register.name,
-      address: register.address,
-      createdAt: register.createdAt,
-    }));
+    // If user owns registers, return those
+    if (ownedRegisters.length > 0) {
+      return ownedRegisters.map(register => ({
+        id: register._id,
+        name: register.name,
+        address: register.address,
+        registerAvatar: register.registerAvatar,
+        createdAt: register.createdAt,
+      }));
+    }
+
+    // Check if user is a manager and get their assigned register
+    const managerEmployee = await ctx.db.query("employees")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .filter(q => q.eq(q.field("isManager"), true))
+      .filter(q => q.eq(q.field("isActive"), true))
+      .first();
+
+    if (managerEmployee && managerEmployee.registerId) {
+      const assignedRegister = await ctx.db.get(managerEmployee.registerId);
+
+      if (assignedRegister && assignedRegister.isActive) {
+        return [{
+          id: assignedRegister._id,
+          name: assignedRegister.name,
+          address: assignedRegister.address,
+          registerAvatar: assignedRegister.registerAvatar,
+          createdAt: assignedRegister.createdAt,
+        }];
+      }
+    }
+
+    // No registers found for this user
+    return [];
   },
 });
 
@@ -104,10 +170,16 @@ export const startRegister = mutation({
       throw new Error("You must be logged in to start a register");
     }
 
-    // Verify the register exists and belongs to this user
+    // Verify the register exists and user has access
     const register = await ctx.db.get(args.registerId);
-    if (!register || register.ownerId !== userId) {
-      throw new Error("Register not found or access denied");
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
     }
 
     // Use client's local date range if provided, otherwise use server's date
@@ -168,9 +240,15 @@ export const getTodayRegisterLog = query({
       return null;
     }
 
-    // Verify the register belongs to this user
+    // Verify the register exists and user has access
     const register = await ctx.db.get(args.registerId);
-    if (!register || register.ownerId !== userId) {
+    if (!register) {
+      return null;
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+    if (!hasAccess) {
       return null;
     }
 

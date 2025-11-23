@@ -1,9 +1,5 @@
 /* Reset styles for shadcn/ui */
 @layer base {
-  html {
-    overflow: hidden;
-  }
-
   * {
     border-color: hsl(var(--border));
   }
@@ -12,5 +8,10 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     overflow: hidden;
+  }
+
+  html, #root {
+    overflow: hidden;
+    height: 100vh;
   }
 }

@@ -20,12 +20,14 @@ export default defineSchema({
     emailVerificationTime: v.optional(v.number()),
     role: v.optional(v.union(v.literal("admin"), v.literal("manager"))),
   })
-    .index("email", ["email"]),
+    .index("email", ["email"])
+    .index("byRole", ["role"]),
 
   // Registers table - Physical store locations
   registers: defineTable({
     name: v.string(),                    // Store name (e.g., "Downtown Store")
     address: v.optional(v.string()),       // Physical address
+    registerAvatar: v.optional(v.string()),            // Avatar seed for Dicebear API
     ownerId: v.id("users"),               // Shop owner who created this register
     isActive: v.boolean(),                // Whether register is active
     createdAt: v.number(),                // Creation timestamp

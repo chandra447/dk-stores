@@ -1,9 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query, action } from "./_generated/server";
+import { mutation, query, action, internalMutation, ActionCtx } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { getStartOfDay, getEndOfDay } from "./register";
+import { getStartOfDay, getEndOfDay, hasRegisterAccess } from "./register";
 import { createAccount } from "@convex-dev/auth/server";
 import { internal, api } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 // Create a new employee record for a register
 export const createEmployee = mutation({
@@ -56,8 +57,8 @@ export const createEmployee = mutation({
     });
 
     // If this is a manager, create a corresponding auth account
-    if (args.isManager && args.pin) {
-          }
+    // Note: This is handled by the client calling createManagerAuthAccount action
+    // after this mutation returns the employeeId
 
     return employeeId;
   },
@@ -70,10 +71,13 @@ export const createManagerAuthAccount = action({
     name: v.string(),
     pin: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx: ActionCtx, args): Promise<{ success: boolean; userId: Id<"users">; email: string }> => {
     try {
-      // Generate email for manager account
-      const managerEmail = `${args.name.toLowerCase().replace(/\s+/g, '.')}@rollcall.local`;
+      // Generate unique email for manager account using name and part of employeeId
+      // Format: name.last4ofID@rollcall.local
+      const idSuffix = args.employeeId.slice(-4);
+      const cleanName = args.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
+      const managerEmail = `${cleanName}.${idSuffix}@rollcall.local`;
 
       // Create Convex auth account for the manager
       const { user } = await createAccount(ctx, {
@@ -89,8 +93,15 @@ export const createManagerAuthAccount = action({
         }
       });
 
-      // Note: Auth account creation succeeded but userId linking needs to be handled separately
-      return { success: true, userId: user._id };
+      // Link the employee record to the new user account
+      // @ts-ignore
+      const linkMutation = internal.auth.users.linkEmployeeToUser;
+      await (ctx as any).runMutation(linkMutation, {
+        employeeId: args.employeeId,
+        userId: user._id,
+      });
+
+      return { success: true, userId: user._id, email: managerEmail };
     } catch (error: any) {
       throw new Error(`Failed to create manager auth account: ${error.message}`);
     }
@@ -108,10 +119,16 @@ export const getRegisterEmployees = query({
       throw new Error("Not authenticated");
     }
 
-    // Verify the register belongs to this user
+    // Verify the register exists and user has access
     const register = await ctx.db.get(args.registerId);
-    if (!register || register.ownerId !== userId) {
-      throw new Error("Register not found or access denied");
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
     }
 
     const employees = await ctx.db.query("employees")
@@ -145,10 +162,16 @@ export const getEmployeesWithStatus = query({
       throw new Error("Not authenticated");
     }
 
-    // Verify the register belongs to this user
+    // Verify the register exists and user has access
     const register = await ctx.db.get(args.registerId);
-    if (!register || register.ownerId !== userId) {
-      throw new Error("Register not found or access denied");
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
     }
 
     // Use client's local date range if provided, otherwise use server's date

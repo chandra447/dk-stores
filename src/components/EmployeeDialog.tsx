@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Clock } from 'lucide-react';
+import { Clock,Dices  } from 'lucide-react';
 import { CreateEmployeeFormData, EditEmployeeFormData, Employee } from '../types/employee';
 
 interface EmployeeDialogProps {
@@ -37,6 +37,14 @@ export function EmployeeDialog({
     const h = parseInt(hours) || 0;
     const m = parseInt(minutes) || 0;
     return (h * 60) + m;
+  };
+
+  const generateRandomPin = (): string => {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  };
+
+  const handleGeneratePin = () => {
+    onInputChange('pin', generateRandomPin());
   };
 
   return (
@@ -90,7 +98,7 @@ export function EmployeeDialog({
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Field>
               <FieldLabel htmlFor="breakHours">Break (Hours)</FieldLabel>
               <Select
@@ -154,20 +162,33 @@ export function EmployeeDialog({
               <FieldLabel htmlFor="pin">
                 Manager PIN (4 digits{'isEdit' in formData ? ', leave empty to keep current' : ''})
               </FieldLabel>
-              <Input
-                id="pin"
-                type="text"
-                placeholder="1234"
-                value={formData.pin}
-                onChange={(e) => {
-                  // Only allow digits and max 4 characters
-                  const value = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  onInputChange('pin', value);
-                }}
-                className="h-12"
-                maxLength={4}
-              />
-              <FieldDescription>4-digit PIN for manager login</FieldDescription>
+              <div className="relative">
+                <Input
+                  id="pin"
+                  type="text"
+                  placeholder="1234"
+                  value={formData.pin}
+                  onChange={(e) => {
+                    // Only allow digits and max 4 characters
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                    onInputChange('pin', value);
+                  }}
+                  className="h-12 pr-12"
+                  maxLength={4}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGeneratePin}
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-10 w-10 p-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+                  title="Generate random PIN"
+                >
+                  <Dices className="h-4 w-4" />
+                </Button>
+              </div>
+        
+        
             </Field>
           )}
 

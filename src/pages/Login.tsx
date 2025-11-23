@@ -1,6 +1,8 @@
 import { useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthActions } from '../hooks/useAuth';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -29,6 +31,11 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Query to find manager account by name
+  const findManagerAccount = useQuery(api.auth.users.findManagerAccountByName,
+    formData.role === 'manager' && formData.identifier.trim() ? { name: formData.identifier.trim() } : 'skip'
+  );
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -59,11 +66,16 @@ function Login() {
     let password = formData.password;
 
     if (formData.role === 'manager') {
-      // For managers, use name-based email format (matching employee creation)
-      // Format: firstname.lastname@rollcall.local
-      const formattedName = formData.identifier.toLowerCase().replace(/\s+/g, '.');
-      email = `${formattedName}@rollcall.local`;
-      password = formData.pin;
+      // For managers, find their account using the query
+      if (findManagerAccount) {
+        email = findManagerAccount.email;
+        password = formData.pin;
+      } else {
+        // If manager account is not found, show appropriate error
+        setError('Manager account not found. Please check your name or contact your admin.');
+        setLoading(false);
+        return;
+      }
     }
 
     try {
@@ -95,6 +107,8 @@ function Login() {
           console.error('Sign up error:', signupErr);
           setError(signupErr.message || 'Failed to create admin account');
         }
+      } else if (formData.role === 'manager') {
+        setError(`Login failed. Please check your name and PIN. If you continue to have issues, contact your admin. ${findManagerAccount ? `(Found account: ${findManagerAccount.email})` : ''}`);
       } else {
         setError(err.message || 'Login failed. Please contact your admin to create your manager account.');
       }
@@ -108,7 +122,7 @@ function Login() {
   };
 
   return (
-    <div className="relative min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
       <AnimatedGradientBackground
         startingGap={125}
         Breathing={true}
@@ -118,10 +132,11 @@ function Login() {
         breathingRange={5}
         topOffset={0}
       />
-      <div className="relative z-10 w-full max-w-md flex flex-col items-center">
+      <div className="relative z-10 min-h-screen flex items-center justify-center">
+        <div className="w-full max-w-md px-4 flex flex-col items-center max-h-screen">
         {/* Logo and Brand */}
-        <div className="text-center mb-6">
-          <div className="flex justify-center mb-4">
+        <div className="text-center mb-4">
+          <div className="flex justify-center mb-3">
             <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
               <Store className="text-white text-2xl" />
             </div>
@@ -134,7 +149,7 @@ function Login() {
         <div className="w-full">
           {/* Tabs - Outside the card */}
           <Tabs value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value as 'manager' | 'admin' }))}>
-            <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50 p-1 mb-4">
+            <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50 p-1 mb-3">
               <TabsTrigger
                 value="admin"
                 className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
@@ -152,7 +167,7 @@ function Login() {
             {/* Card that changes content based on selected tab */}
             <Card className="w-full rounded-2xl shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm transition-all duration-300">
             <TabsContent value="admin" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="email">Email Address</FieldLabel>
@@ -223,7 +238,7 @@ function Login() {
             </TabsContent>
 
             <TabsContent value="manager" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="username">Username (Full Name)</FieldLabel>
@@ -287,6 +302,7 @@ function Login() {
             </TabsContent>
           </Card>
         </Tabs>
+        </div>
       </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ConvexReactClient, Authenticated, Unauthenticated, AuthLoading } from 'convex/react';
 import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import { Spinner } from '@/components/ui/spinner';
+import { Toaster } from 'sonner';
 
 // Layout Components
 import PublicLayout from './components/Layout/PublicLayout';
@@ -67,6 +68,7 @@ function App() {
     <ConvexAuthProvider client={convex}>
       <Router>
         <AppContent />
+        <Toaster position="bottom-left" theme="dark" />
       </Router>
     </ConvexAuthProvider>
   );

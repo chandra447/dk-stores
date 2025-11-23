@@ -1,6 +1,44 @@
 import { v } from "convex/values";
-import { mutation, query } from "../_generated/server";
+import { mutation, query, internalMutation } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+
+// Internal mutation to link an employee to a user account
+export const linkEmployeeToUser = internalMutation({
+  args: {
+    employeeId: v.id("employees"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.employeeId, {
+      userId: args.userId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Query to find manager account by name for login purposes
+export const findManagerAccountByName = query({
+  args: {
+    name: v.string(),
+  },
+  handler: async (ctx, { name }) => {
+    // Search for users with manager role using the index
+    const managerUsers = await ctx.db.query("users")
+      .withIndex("byRole", (q) => q.eq("role", "manager"))
+      .collect();
+
+    // Find the user that matches the name (case-insensitive)
+    const matchingManager = managerUsers.find(user =>
+      user.name?.toLowerCase() === name.toLowerCase()
+    );
+
+    return matchingManager ? {
+      email: matchingManager.email,
+      userId: matchingManager._id,
+      name: matchingManager.name
+    } : null;
+  },
+});
 
 // Create a new admin user
 export const createAdmin = mutation({

@@ -3,9 +3,11 @@ import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import { Separator } from '../components/ui/separator';
 import { ArrowLeft, Users, Plus, Clock, Store, Coffee, Home, Calendar, Search } from 'lucide-react';
 import { EmployeeCard } from '../components/EmployeeCard';
 import { LogDrawer } from '../components/LogDrawer';
@@ -407,17 +409,34 @@ function RegisterDetail() {
       // If this is a manager, create the auth account
       if (formData.isManager && formData.pin) {
         try {
-          await createManagerAuthAccount({
+          const result = await createManagerAuthAccount({
             employeeId: employeeId,
             name: formData.name.trim(),
             pin: formData.pin,
           });
+          
+          if (result && result.email) {
+            toast.success('Manager account created!', {
+              description: (
+                <div className="mt-2 space-y-1">
+                  <p><strong>Username:</strong> {result.email}</p>
+                  <p><strong>PIN:</strong> {formData.pin}</p>
+                  <p className="text-xs text-muted-foreground mt-2">Please share these credentials with the manager.</p>
+                </div>
+              ),
+              duration: 10000, // Show for 10 seconds
+            });
+          }
+          
           console.log(`Manager auth account created for ${formData.name.trim()}`);
         } catch (authError: any) {
           console.error('Failed to create manager auth account:', authError);
-          // Note: Don't fail the employee creation if auth account creation fails
-          // The admin can try to create the auth account manually later
+          toast.error('Failed to create manager login', {
+            description: authError.message
+          });
         }
+      } else {
+        toast.success('Employee created successfully');
       }
 
       // Reset form and close dialog
@@ -457,17 +476,16 @@ function RegisterDetail() {
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex flex-col space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" className='hover:bg-primary rounded-b-md bg-accent' asChild>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <Button variant="ghost" className='hover:bg-primary rounded-b-md bg-accent p-2 sm:p-3' asChild>
               <Link to="/registers">
-                <ArrowLeft className="font-semibold" size={64} strokeWidth={4}/>
-              
+                <ArrowLeft className="font-semibold" size={32} sm:size={48} strokeWidth={3}/>
               </Link>
             </Button>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <Store className="w-8 h-8" />
+              <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <Store className="w-6 h-6 sm:w-8 sm:h-8" />
                 {register?.name || 'Store'} Employees
               </h1>
 
@@ -476,7 +494,7 @@ function RegisterDetail() {
 
           {/* Create Employee Button */}
           <Button
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 w-full sm:w-auto"
         onClick={() => setIsCreateDialogOpen(true)}
       >
         <Plus className="w-4 h-4" />
@@ -505,7 +523,6 @@ function RegisterDetail() {
         }}
         onSubmit={handleUpdateEmployee}
         title="Edit Employee"
-        description="Update employee information. Leave PIN empty to keep existing PIN unchanged."
         formData={editFormData}
         onInputChange={handleEditInputChange}
         loading={loading}
@@ -513,6 +530,8 @@ function RegisterDetail() {
         submitText="Update Employee"
       />
     </div>
+
+    <Separator />
 
         {/* Register Status - Only show when register is started */}
         {todayRegister && (
@@ -529,6 +548,8 @@ function RegisterDetail() {
             </div>
           </div>
         )}
+
+    <Separator />
 
         {/* Employee Filters and Search */}
         {todayRegister && (

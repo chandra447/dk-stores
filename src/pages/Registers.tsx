@@ -2,19 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { useAuth } from '../hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
-import { Store, Plus, Users } from 'lucide-react';
-
-interface RegisterType {
-  id: string;
-  name: string;
-  address?: string;
-  createdAt: number;
-}
+import { Store, Plus } from 'lucide-react';
+import { RegisterCard } from '../components/RegisterCard';
 
 interface CreateRegisterFormData {
   name: string;
@@ -22,6 +16,7 @@ interface CreateRegisterFormData {
 }
 
 function Registers() {
+  const { user, isAdmin } = useAuth();
   const registers = useQuery(api.mutations.getMyRegisters);
   const createRegister = useMutation(api.mutations.createRegister);
 
@@ -73,18 +68,23 @@ function Registers() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Your Stores</h1>
-          <p className="text-muted-foreground">Manage your store locations and employees</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            {isAdmin ? "Your Stores" : "Assigned Store"}
+          </h1>
+          <p className="text-muted-foreground">
+            {isAdmin ? "Manage your store locations and employees" : "View your assigned store location"}
+          </p>
         </div>
 
-        {/* Create Register Button */}
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Store
-            </Button>
-          </DialogTrigger>
+        {/* Create Register Button - Only for admins */}
+        {isAdmin && (
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Store
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Create New Store</DialogTitle>
@@ -139,7 +139,8 @@ function Registers() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        )}
       </div>
 
       {/* Loading State */}
@@ -156,14 +157,21 @@ function Registers() {
       {registers && registers.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Store className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">No stores yet</h2>
+          <h2 className="text-2xl font-semibold mb-2">
+            {isAdmin ? "No stores yet" : "No assigned store"}
+          </h2>
           <p className="text-muted-foreground mb-6 max-w-md">
-            Create your first store location to start managing employees and attendance.
+            {isAdmin
+              ? "Create your first store location to start managing employees and attendance."
+              : "You haven't been assigned to any store yet. Please contact your admin."
+            }
           </p>
-          <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Create Your First Store
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Create Your First Store
+            </Button>
+          )}
         </div>
       )}
 
@@ -171,39 +179,7 @@ function Registers() {
       {registers && registers.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {registers.map((register) => (
-            <Card key={register.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Store className="w-5 h-5" />
-                  {register.name}
-                </CardTitle>
-                <CardDescription>{register.address || 'No address provided'}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Status */}
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    Active
-                  </div>
-                  <div className="text-sm text-muted-foreground">Status</div>
-                </div>
-
-                {/* Creation Date */}
-                <div className="text-center">
-                  <div className="text-xs text-muted-foreground">
-                    Created {new Date(register.createdAt).toLocaleDateString()}
-                  </div>
-                </div>
-
-                {/* Action Button */}
-                <Button asChild className="w-full">
-                  <Link to={`/registers/${register.id}`}>
-                    <Users className="w-4 h-4 mr-2" />
-                    Manage Employees
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
+            <RegisterCard key={register.id} register={register} />
           ))}
         </div>
       )}
