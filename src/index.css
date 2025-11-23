@@ -1,19 +1,16 @@
-/* Remove default styles that conflict with daisyUI */
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-}
+/* Reset styles for shadcn/ui */
+@layer base {
+  html {
+    overflow: hidden;
+  }
 
-/* Remove default button styling that conflicts with daisyUI */
-button {
-  border: none;
-  background: none;
-  padding: 0;
-  margin: 0;
-}
+  * {
+    border-color: hsl(var(--border));
+  }
 
-/* Remove default link styling that conflicts with daisyUI */
-a {
-  color: inherit;
-  text-decoration: none;
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    overflow: hidden;
+  }
 }
