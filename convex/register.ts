@@ -141,12 +141,51 @@ export const getMyRegisters = query({
       const assignedRegister = await ctx.db.get(managerEmployee.registerId);
 
       if (assignedRegister && assignedRegister.isActive) {
+        // Calculate break time usage for the manager
+        let usedBreakTime = 0;
+        const now = Date.now();
+        const startOfDay = getStartOfDay(new Date(now));
+        const endOfDay = getEndOfDay(new Date(now));
+
+        // Get today's register log
+        const registerLog = await ctx.db.query("registerLogs")
+          .filter(q => q.eq(q.field("registerId"), assignedRegister._id))
+          .filter(q => q.gte(q.field("timestamp"), startOfDay))
+          .filter(q => q.lte(q.field("timestamp"), endOfDay))
+          .first();
+
+        if (registerLog) {
+          // Get rollcall for this employee
+          const rollcall = await ctx.db.query("employeeRollcall")
+            .withIndex("byEmployeeDate", (q) =>
+              q.eq("employeeId", managerEmployee._id).eq("registerLogId", registerLog._id)
+            )
+            .first();
+
+          if (rollcall) {
+            // Get attendance logs (breaks)
+            const breaks = await ctx.db.query("attendanceLogs")
+              .withIndex("byRollcall", (q) => q.eq("employeeRollcallId", rollcall._id))
+              .collect();
+
+            // Calculate total break time
+            usedBreakTime = breaks.reduce((total, log) => {
+              const endTime = log.checkOutTime || now;
+              return total + (endTime - log.checkinTime);
+            }, 0);
+          }
+        }
+
         return [{
           id: assignedRegister._id,
           name: assignedRegister.name,
           address: assignedRegister.address,
           registerAvatar: assignedRegister.registerAvatar,
           createdAt: assignedRegister.createdAt,
+          breakTimeInfo: {
+            allowed: managerEmployee.allowedBreakTime || 0, // in minutes
+            used: Math.floor(usedBreakTime / (1000 * 60)) // convert ms to minutes
+          }
         }];
       }
     }

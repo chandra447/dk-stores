@@ -242,8 +242,20 @@ export const getEmployeesWithStatus = query({
         let absentTime = null;
         let halfDay = false;
 
+        let usedBreakTime = 0;
+
         if (rollcall) {
           halfDay = rollcall.halfDay || false;
+
+          // Calculate total used break time from all logs
+          const allBreaks = await ctx.db.query("attendanceLogs")
+            .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
+            .collect();
+
+          usedBreakTime = allBreaks.reduce((total, log) => {
+            const endTime = log.checkOutTime || Date.now();
+            return total + (endTime - log.checkinTime);
+          }, 0);
 
           if (rollcall.absentTime) {
             status = "absent";
@@ -252,12 +264,7 @@ export const getEmployeesWithStatus = query({
             presentTime = rollcall.presentTime;
 
             // Check for active break
-            const activeBreak = await ctx.db.query("attendanceLogs")
-              .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
-              .filter(q => q.eq(q.field("employeeId"), employee._id))
-              .filter(q => q.eq(q.field("checkOutTime"), undefined))
-              .order("desc")
-              .first();
+            const activeBreak = allBreaks.find(log => !log.checkOutTime);
 
             if (activeBreak) {
               status = "checkout";
@@ -287,6 +294,7 @@ export const getEmployeesWithStatus = query({
           presentTime,
           absentTime,
           halfDay,
+          usedBreakTime, // Add this field
         };
       })
     );

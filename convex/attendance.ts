@@ -589,6 +589,7 @@ export const getEmployeeAttendanceLogs = query({
         id: employee._id,
         name: employee.name,
         startTime: employee.startTime,
+        allowedBreakTime: employee.allowedBreakTime,
       },
       rollcall: {
         presentTime: rollcall?.presentTime,

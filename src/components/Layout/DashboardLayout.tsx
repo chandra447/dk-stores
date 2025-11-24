@@ -12,7 +12,7 @@ function DashboardLayout() {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const userMenuRef = useRef(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
     await signOut();
@@ -40,9 +40,9 @@ function DashboardLayout() {
   }, [isUserMenuOpen]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
       {/* Navigation */}
-      <nav className="bg-white dark:bg-slate-800 shadow-md border-b">
+      <nav className="flex-none bg-white dark:bg-slate-800 shadow-md border-b z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             {/* Mobile menu button and brand */}
@@ -157,7 +157,7 @@ function DashboardLayout() {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 p-4 lg:p-8">
+      <main className="flex-1 overflow-y-auto p-4 lg:p-8 no-scrollbar">
         <Outlet />
       </main>
     </div>

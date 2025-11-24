@@ -3,6 +3,7 @@ export interface EmployeeLogData {
     id: string;
     name: string;
     startTime: number;
+    allowedBreakTime: number;
   };
   rollcall: {
     presentTime?: number;

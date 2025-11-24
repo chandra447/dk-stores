@@ -6,9 +6,10 @@ import { MoreVertical, Home, Coffee, FileText, Edit3 } from 'lucide-react';
 import { useMotionValue, useTransform, motion } from 'motion/react';
 import { useEffect } from 'react';
 import { Employee } from '../types/employee';
+import { BreakGauge } from './BreakGauge';
 
 interface EmployeeCardProps {
-  employee: Employee;
+  employee: Employee & { usedBreakTime?: number };
   todayRegisterLog: any;
   userRole: string | null;
   onMarkPresent: (employeeId: string, registerLogId: string) => void;
@@ -58,10 +59,10 @@ function BreakTimer({ startTime, className = "" }: { startTime: number | null; c
     return Math.floor((safeValue % (1000 * 60)) / 1000);
   });
 
-  
+
   return (
     <motion.div
-      className={`font-mono text-sm ${className}`}
+      className={`font - mono text - sm ${className} `}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
@@ -166,6 +167,16 @@ export function EmployeeCard({
           )}
         </div>
       </CardContent>
+
+      {/* Break Time Gauge */}
+      {(employee.status === 'present' || employee.status === 'checkout') && (
+        <div className="px-6 pb-4">
+          <BreakGauge
+            used={Math.floor((employee.usedBreakTime || 0) / (1000 * 60))}
+            allowed={employee.allowedBreakTime}
+          />
+        </div>
+      )}
 
       <CardFooter className="pt-0">
         {/* Action Buttons */}

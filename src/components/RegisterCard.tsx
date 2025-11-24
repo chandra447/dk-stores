@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Store } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+
 interface RegisterType {
   id: string;
   name: string;

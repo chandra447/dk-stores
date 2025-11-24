@@ -2,6 +2,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { Button } from '@/components/ui/button';
 import { Edit3 } from 'lucide-react';
 import { EmployeeLogData } from '../types/logs';
+import { BreakGauge } from './BreakGauge';
 
 interface LogDrawerProps {
   isOpen: boolean;
@@ -51,6 +52,18 @@ export function LogDrawer({
                   <div className="text-sm text-muted-foreground">Shop Opening Time</div>
                   <div className="font-medium">{formatTimeWithAMPM(logs.registerLog.timestamp)}</div>
                 </div>
+              </div>
+
+              {/* Break Gauge */}
+              <div className="px-1">
+                <BreakGauge
+                  used={Math.floor(logs.logs.reduce((total, log) => {
+                    return total + (log.checkOutTime
+                      ? log.checkOutTime - log.checkinTime
+                      : Date.now() - log.checkinTime);
+                  }, 0) / (1000 * 60))}
+                  allowed={logs.employee.allowedBreakTime}
+                />
               </div>
 
               {/* Status Badges */}
@@ -106,11 +119,10 @@ export function LogDrawer({
                           return (
                             <tr
                               key={log.id}
-                              className={`border-b ${
-                                log.isActive
+                              className={`border-b ${log.isActive
                                   ? 'bg-red-50 dark:bg-red-950'
                                   : 'hover:bg-muted/25'
-                              }`}
+                                }`}
                             >
                               <td className="p-3">
                                 {formatTimeWithAMPM(log.checkinTime)}
