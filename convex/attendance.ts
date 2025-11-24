@@ -366,6 +366,54 @@ export const markHalfDay = mutation({
   },
 });
 
+// Remove half-day marking from a rollcall entry
+export const removeHalfDay = mutation({
+  args: {
+    rollcallId: v.id("employeeRollcall"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("You must be logged in to manage attendance");
+    }
+
+    // Get the rollcall entry
+    const rollcall = await ctx.db.get(args.rollcallId);
+    if (!rollcall) {
+      throw new Error("Rollcall not found");
+    }
+
+    // Verify access through employee and register
+    const [employee, registerLog] = await Promise.all([
+      ctx.db.get(rollcall.employeeId),
+      ctx.db.get(rollcall.registerLogId),
+    ]);
+
+    if (!employee || !registerLog) {
+      throw new Error("Employee or register log not found");
+    }
+
+    const register = await ctx.db.get(registerLog.registerId);
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
+    }
+
+    // Update rollcall to remove half-day marking
+    await ctx.db.patch(args.rollcallId, {
+      halfDay: false,
+      updatedAt: Date.now(),
+    });
+
+    return args.rollcallId;
+  },
+});
+
 // Get employee's current attendance status
 export const getEmployeeAttendanceStatus = query({
   args: {

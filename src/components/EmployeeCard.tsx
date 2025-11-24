@@ -20,6 +20,7 @@ interface EmployeeCardProps {
   onViewLogs: (employee: Employee) => void;
   onEditEmployee: (employee: Employee) => void;
   onMarkHalfDay: (rollcallId: string) => void;
+  onRemoveHalfDay: (rollcallId: string) => void;
   formatTimeWithAMPM: (timestamp: number) => string;
 }
 
@@ -88,6 +89,7 @@ export function EmployeeCard({
   onViewLogs,
   onEditEmployee,
   onMarkHalfDay,
+  onRemoveHalfDay,
   formatTimeWithAMPM
 }: EmployeeCardProps) {
   return (
@@ -127,6 +129,11 @@ export function EmployeeCard({
               {employee.status === 'present' && employee.rollcallId && !employee.halfDay && (
                 <DropdownMenuItem onClick={() => onMarkHalfDay(employee.rollcallId!)}>
                   Mark Half Day
+                </DropdownMenuItem>
+              )}
+              {employee.status === 'present' && employee.rollcallId && employee.halfDay && (
+                <DropdownMenuItem onClick={() => onRemoveHalfDay(employee.rollcallId!)}>
+                  Remove Half Day
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

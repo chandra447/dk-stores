@@ -70,6 +70,7 @@ function RegisterDetail() {
   const endBreak = useMutation(api.mutations.endEmployeeBreak);
   const returnFromAbsence = useMutation(api.mutations.returnFromAbsence);
   const markHalfDay = useMutation(api.mutations.markHalfDay);
+  const removeHalfDay = useMutation(api.mutations.removeHalfDay);
   const updateEmployee = useMutation(api.employees.updateEmployee);
   const createManagerAuthAccount = useAction(api.employees.createManagerAuthAccount);
 
@@ -252,6 +253,14 @@ function RegisterDetail() {
       await markHalfDay({ rollcallId: rollcallId as any });
     } catch (err: any) {
       setError(err.message || 'Failed to mark half day');
+    }
+  };
+
+  const handleRemoveHalfDay = async (rollcallId: string) => {
+    try {
+      await removeHalfDay({ rollcallId: rollcallId as any });
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove half day');
     }
   };
 
@@ -647,6 +656,7 @@ function RegisterDetail() {
               onViewLogs={handleViewLogs}
               onEditEmployee={handleEditEmployee}
               onMarkHalfDay={handleMarkHalfDay}
+              onRemoveHalfDay={handleRemoveHalfDay}
               formatTimeWithAMPM={formatTimeWithAMPM}
             />
           ))}
