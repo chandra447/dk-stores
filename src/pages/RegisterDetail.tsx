@@ -89,6 +89,7 @@ function RegisterDetail() {
   const registerId = id as Id<"registers">;
   
   const registerArgs = registerId ? { id: registerId } : "skip";
+  //@ts-ignore
   const register = useQuery(api.register.getRegister, registerArgs);
 
   const logArgs = registerId ? {

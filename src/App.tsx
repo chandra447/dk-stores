@@ -4,6 +4,7 @@ import { ConvexReactClient, Authenticated, Unauthenticated, AuthLoading } from '
 import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import { Spinner } from '@/components/ui/spinner';
 import { Toaster } from 'sonner';
+import { PullToRefresh } from '@/components/PullToRefresh';
 
 // Layout Components
 import PublicLayout from './components/Layout/PublicLayout';
@@ -21,10 +22,32 @@ import RegisterDetail from './pages/RegisterDetail';
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
+// Global refresh handler for pull-to-refresh
+const handleRefresh = async () => {
+  // Clear any Convex caches and force refetch
+  const localStorage = window.localStorage;
+  const keysToRemove: string[] = [];
+
+  // Remove Convex query cache
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('convex-')) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach(key => localStorage.removeItem(key));
+
+  // Force a page reload after a brief delay to ensure cache clearing
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
+};
+
 // App wrapper to handle authentication-based redirects
 function AppContent() {
   return (
-    <>
+    <PullToRefresh onRefresh={handleRefresh}>
       <AuthLoading>
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
           <Spinner className="size-8" />
@@ -70,7 +93,7 @@ function AppContent() {
           <Route path="*" element={<Navigate to="/registers" replace />} />
         </Routes>
       </Authenticated>
-    </>
+    </PullToRefresh>
   );
 }
 
