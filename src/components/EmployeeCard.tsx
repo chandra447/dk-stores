@@ -12,6 +12,7 @@ interface EmployeeCardProps {
   employee: Employee & { usedBreakTime?: number };
   todayRegisterLog: any;
   userRole: string | null;
+  isToday: boolean;
   onMarkPresent: (employeeId: string, registerLogId: string) => void;
   onMarkAbsent: (employeeId: string, registerLogId: string) => void;
   onStartBreak: (employeeId: string, rollcallId: string) => void;
@@ -81,6 +82,7 @@ export function EmployeeCard({
   employee,
   todayRegisterLog,
   userRole,
+  isToday,
   onMarkPresent,
   onMarkAbsent,
   onStartBreak,
@@ -193,6 +195,7 @@ export function EmployeeCard({
               onClick={() => onMarkPresent(employee.id, todayRegisterLog._id)}
               className="w-full"
               size="sm"
+              disabled={!isToday}
             >
               Mark Present
             </Button>
@@ -205,6 +208,7 @@ export function EmployeeCard({
                 variant="outline"
                 size="sm"
                 className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                disabled={!isToday}
               >
                 Check Out
               </Button>
@@ -213,6 +217,7 @@ export function EmployeeCard({
                 variant="outline"
                 size="sm"
                 className="text-red-600 border-red-200 hover:bg-red-50"
+                disabled={!isToday}
               >
                 Absent
               </Button>
@@ -225,6 +230,7 @@ export function EmployeeCard({
               className="w-full"
               size="sm"
               variant="outline"
+              disabled={!isToday}
             >
               Check In
             </Button>
@@ -236,6 +242,7 @@ export function EmployeeCard({
               className="w-full"
               size="sm"
               variant="outline"
+              disabled={!isToday}
             >
               Return to Work
             </Button>

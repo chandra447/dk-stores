@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon, Clock } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from 'recharts';
 import { useQueryStates } from 'nuqs';
-import { parseAsString, parseAsStringLiteral } from 'nuqs';
+import { parseAsString } from 'nuqs';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,32 +28,7 @@ import {
 import { LogDrawer } from '@/components/LogDrawer';
 import { format as formatDateFns } from 'date-fns';
 
-// Custom parser for date range
-const parseAsDateRange = {
-  ...parseAsString,
-  parse: (value: string) => {
-    try {
-      if (!value || value === 'undefined') return undefined;
 
-      const [fromStr, toStr] = value.split('..');
-      if (!fromStr || !toStr) return undefined;
-
-      const from = new Date(fromStr);
-      const to = new Date(toStr);
-
-      // Validate dates
-      if (isNaN(from.getTime()) || isNaN(to.getTime())) return undefined;
-
-      return { from, to };
-    } catch {
-      return undefined;
-    }
-  },
-  serialize: (value: DateRange | undefined) => {
-    if (!value || !value.from || !value.to) return null;
-    return `${value.from.toISOString()}..${value.to.toISOString()}`;
-  }
-};
 
 interface ChartData {
   date: string;
@@ -66,19 +41,42 @@ function Dashboard() {
   const { user, isAdmin, isManager } = useAuth();
 
   // Default date range (current month)
-  const defaultDateRange: DateRange = {
+  const defaultDateRange = useMemo<DateRange>(() => ({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     to: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
-  };
+  }), []);
 
   // URL-based filters state
   const [filters, setFilters] = useQueryStates({
     register: parseAsString.withDefault(''),
     employee: parseAsString.withDefault(''),
-    dateRange: parseAsDateRange.withDefault(defaultDateRange)
+    fromDate: parseAsString.withDefault(''),
+    toDate: parseAsString.withDefault('')
   });
 
-  const { register: selectedRegister, employee: selectedEmployee, dateRange } = filters;
+  const { register: selectedRegister, employee: selectedEmployee, fromDate, toDate } = filters;
+
+  // Combine separate date strings into DateRange
+  const dateRange: DateRange | undefined = useMemo(() => {
+    if (fromDate && toDate) {
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
+        return { from, to };
+      }
+    }
+    return defaultDateRange;
+  }, [fromDate, toDate, defaultDateRange]);
+
+  // Initialize date parameters on mount if not set
+  useMemo(() => {
+    if (!fromDate && !toDate && defaultDateRange.from && defaultDateRange.to) {
+      setFilters({
+        fromDate: format(defaultDateRange.from, 'yyyy-MM-dd'),
+        toDate: format(defaultDateRange.to, 'yyyy-MM-dd')
+      });
+    }
+  }, [fromDate, toDate, setFilters, defaultDateRange]);
 
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -136,12 +134,34 @@ function Dashboard() {
     }
   };
 
+  // Convert hourly data to minutes for chart display
+  const chartData = useMemo(() => {
+    return hourlyData
+      .filter((d: any) => d.totalHours > 0)
+      .map((d: any) => ({
+        ...d,
+        breakDurationMinutes: (d.breakDuration || 0) * 60, // Convert hours to minutes
+      }));
+  }, [hourlyData]);
+
+  // Calculate adaptive Y-axis domain to accommodate both data and reference line
+  const yAxisDomain = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [0, 'auto'];
+
+    const maxBreakDuration = Math.max(...chartData.map((d: any) => d.breakDurationMinutes || 0));
+    const allowedBreakTime = stats.allowedBreakTimeMinutes || 0;
+
+    // Find the maximum value between actual data and reference line
+    const maxValue = Math.max(maxBreakDuration, allowedBreakTime);
+
+    // Add 20% padding on top for better visibility
+    const upperBound = Math.ceil(maxValue * 1.2);
+
+    return [0, upperBound];
+  }, [chartData, stats.allowedBreakTimeMinutes]);
+
   const chartConfig = {
-    workDuration: {
-      label: 'Work Duration',
-      color: 'var(--primary)',
-    },
-    breakDuration: {
+    breakDurationMinutes: {
       label: 'Break Duration',
       color: 'var(--accent)',
     },
@@ -241,7 +261,14 @@ function Dashboard() {
                     mode="range"
                     defaultMonth={dateRange?.from}
                     selected={dateRange}
-                    onSelect={(value) => setFilters({ dateRange: value })}
+                    onSelect={(value) => {
+                      if (value?.from && value?.to) {
+                        setFilters({
+                          fromDate: format(value.from, 'yyyy-MM-dd'),
+                          toDate: format(value.to, 'yyyy-MM-dd')
+                        });
+                      }
+                    }}
                     numberOfMonths={2}
                   />
                 </PopoverContent>
@@ -295,30 +322,6 @@ function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Break Time</CardTitle>
-              <CardDescription>Time usage compliance</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Used:</span>
-                  <span className="text-lg font-semibold text-blue-600">{stats.totalBreakTimeMinutes || 0}m</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Allowed:</span>
-                  <span className="text-lg font-semibold text-green-600">{stats.allowedBreakTimeMinutes || 0}m</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Status:</span>
-                  <Badge variant={stats.wageDetails?.breakTimeCompliance?.compliant ? "default" : "destructive"}>
-                    {stats.wageDetails?.breakTimeCompliance?.compliant ? "Compliant" : "Over Limit"}
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
@@ -365,17 +368,17 @@ function Dashboard() {
 
       {/* Hours Worked Chart */}
       {(!selectedRegister || !selectedEmployee || !hourlyData || hourlyData.length === 0) ? (
-        <ChartsEmptyState title="Hours Worked" />
+        <ChartsEmptyState title="Break Time Usage" />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Hours Worked</CardTitle>
-
+            <CardTitle>Break Time Usage</CardTitle>
+            <CardDescription>Daily break time duration compared to allowed limit</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-100">
+            <div className="h-96">
               <ChartContainer config={chartConfig} className="aspect-auto h-full w-full">
-                <BarChart accessibilityLayer data={hourlyData} margin={{ top: 20 }}>
+                <BarChart accessibilityLayer data={chartData} margin={{ top: 20 }}>
                   <CartesianGrid vertical={false} />
                   <XAxis
                     dataKey="date"
@@ -384,26 +387,38 @@ function Dashboard() {
                     axisLine={false}
                     tickFormatter={(value) => format(new Date(value), "dd/MM")}
                   />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  <Bar
-                    dataKey="workDuration"
-                    stackId="a"
-                    fill="var(--color-workDuration)"
-                    radius={[0, 0, 4, 4]}
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }}
                   />
+                  <ChartTooltip
+                    content={<ChartTooltipContent />}
+                    labelFormatter={(value) => format(new Date(value), "MMM dd, yyyy")}
+                    formatter={(value: number) => [`${value} min`, 'Break Duration']}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {/* Add a horizontal reference line for allowed break time */}
+                  {stats.allowedBreakTimeMinutes && (
+                    <ReferenceLine
+                      y={stats.allowedBreakTimeMinutes}
+                      stroke="rgb(250, 204, 21)" // Yellow color
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      label="Allowed Break Time"
+                      isFront
+                    />
+                  )}
                   <Bar
-                    dataKey="breakDuration"
-                    stackId="a"
-                    fill="var(--color-breakDuration)"
-                    radius={[4, 4, 0, 0]}
+                    dataKey="breakDurationMinutes"
+                    radius={[4, 4, 4, 4]}
+                    name="Break Duration"
+                    fill="var(--color-breakDurationMinutes)"
                   />
                 </BarChart>
               </ChartContainer>
             </div>
           </CardContent>
-
         </Card>
       )}
 
@@ -438,17 +453,6 @@ function Dashboard() {
                   <TableCell>{stats.halfDays} half days × (employee rate ÷ 2)</TableCell>
                   <TableCell className="text-yellow-600">₹{stats.wageDetails.halfDayWage.toFixed(2)}</TableCell>
                 </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">Break Time Usage</TableCell>
-                  <TableCell>
-                    {stats.totalBreakTimeMinutes || 0} min used / {stats.allowedBreakTimeMinutes || 0} min allowed
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={stats.wageDetails?.breakTimeCompliance?.compliant ? "default" : "destructive"}>
-                      {stats.wageDetails?.breakTimeCompliance?.compliant ? "✓ Compliant" : "⚠️ Over Limit"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
                 <TableRow className="font-semibold border-t bg-muted/50">
                   <TableCell>Total Wages</TableCell>
                   <TableCell>Full Day + Half Day</TableCell>
@@ -457,15 +461,6 @@ function Dashboard() {
               </TableBody>
             </Table>
 
-            {stats.wageDetails?.breakTimeCompliance && !stats.wageDetails.breakTimeCompliance.compliant && (
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>⚠️ Break Time Alert:</strong> Employees used {stats.totalBreakTimeMinutes || 0} minutes of break time,
-                  which exceeds the allowed {stats.allowedBreakTimeMinutes || 0} minutes.
-                  Consider adjusting schedules or break time policies.
-                </p>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
@@ -512,7 +507,7 @@ function Dashboard() {
           return Math.max(0, presentTime - shopOpenTime);
         }}
       />
-    </div >
+    </div>
   );
 }
 

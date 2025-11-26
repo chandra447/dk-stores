@@ -1,19 +1,18 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Clock,Dices  } from 'lucide-react';
-import { CreateEmployeeFormData, EditEmployeeFormData, Employee } from '../types/employee';
+import { CreateEmployeeFormData, EditEmployeeFormData } from '../types/employee';
 
 interface EmployeeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: () => void;
   title: string;
-  description: string;
   formData: CreateEmployeeFormData | EditEmployeeFormData;
   onInputChange: (field: keyof (CreateEmployeeFormData | EditEmployeeFormData), value: string | boolean) => void;
   loading: boolean;
@@ -26,7 +25,6 @@ export function EmployeeDialog({
   onClose,
   onSubmit,
   title,
-  description,
   formData,
   onInputChange,
   loading,
@@ -52,9 +50,7 @@ export function EmployeeDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {description}
-          </DialogDescription>
+    
         </DialogHeader>
 
         <FieldGroup>

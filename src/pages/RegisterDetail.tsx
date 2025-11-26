@@ -2,39 +2,87 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
-import { Separator } from '../components/ui/separator';
-import { ArrowLeft, Users, Plus, Clock, Store, Coffee, Home, Calendar, Search } from 'lucide-react';
-import { EmployeeCard } from '../components/EmployeeCard';
-import { LogDrawer } from '../components/LogDrawer';
-import { EmployeeDialog } from '../components/EmployeeDialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ArrowLeft, Users, Plus, Clock, Store, Coffee, Home, CalendarIcon, Search } from 'lucide-react';
+import { EmployeeCard } from '@/components/EmployeeCard';
+import { LogDrawer } from '@/components/LogDrawer';
+import { EmployeeDialog } from '@/components/EmployeeDialog';
+import { format } from 'date-fns';
+import { cn } from '../lib/utils';
+import { useQueryState } from 'nuqs';
+import { parseAsString } from 'nuqs';
 
 import { Employee, EmployeeFilter, CreateEmployeeFormData, EditEmployeeFormData } from '../types/employee';
 
 function RegisterDetail() {
   const { id } = useParams<{ id: string }>();
 
+  // Date state with URL persistence (defaults to today)
+  const [selectedDateStr, setSelectedDateStr] = useQueryState('date', parseAsString);
+
+  const selectedDate = useMemo(() => {
+    if (selectedDateStr) {
+      // Try parsing the date string - it should be in YYYY-MM-DD format
+      const parsed = new Date(selectedDateStr + 'T00:00:00'); // Add time to avoid timezone issues
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    // Default to today if no valid date
+    return new Date();
+  }, [selectedDateStr]);
+
+  const currentDate = new Date();
+
   // Helper function to get start of day in local timezone
-  const getStartOfDayLocal = (date: Date = new Date()): number => {
+  const getStartOfDayLocal = (date: Date): number => {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     return startOfDay.getTime();
   };
 
   // Helper function to get end of day in local timezone
-  const getEndOfDayLocal = (date: Date = new Date()): number => {
+  const getEndOfDayLocal = (date: Date): number => {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
     return endOfDay.getTime();
   };
 
-  // Get client's local date range
-  const clientLocalStartOfDay = getStartOfDayLocal();
-  const clientLocalEndOfDay = getEndOfDayLocal();
+  // Get selected date's start and end times
+  const selectedStartOfDay = getStartOfDayLocal(selectedDate);
+  const selectedEndOfDay = getEndOfDayLocal(selectedDate);
+
+  // Check if selected date is today
+  const isToday = useMemo(() => {
+    return selectedDate.toDateString() === currentDate.toDateString();
+  }, [selectedDate, currentDate]);
+
+  // Initialize date in URL on component mount if not already set
+  useEffect(() => {
+    if (!selectedDateStr) {
+      // Set today's date in URL format (YYYY-MM-DD) using local timezone
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('en-CA'); // YYYY-MM-DD format in local timezone
+      console.log('Setting initial date in URL:', dateStr);
+      setSelectedDateStr(dateStr);
+    }
+  }, [selectedDateStr, setSelectedDateStr]);
+
+  // Debug logging for date changes
+  useEffect(() => {
+    console.log('Date state changed:', {
+      selectedDateStr,
+      selectedDate: selectedDate.toDateString(),
+      isToday
+    });
+  }, [selectedDateStr, selectedDate, isToday]);
 
   // Queries for register info and employee status
   const registerId = id as Id<"registers">;
@@ -44,21 +92,21 @@ function RegisterDetail() {
 
   const logArgs = registerId ? {
     registerId: registerId,
-    clientLocalStartOfDay,
-    clientLocalEndOfDay
+    clientLocalStartOfDay: selectedStartOfDay,
+    clientLocalEndOfDay: selectedEndOfDay
   } : "skip";
-  const todayRegisterLog = useQuery(api.register.getTodayRegisterLog, logArgs);
+  const selectedRegisterLog = useQuery(api.register.getTodayRegisterLog, logArgs);
 
   const employeesArgs = registerId ? {
     registerId: registerId,
-    clientLocalStartOfDay,
-    clientLocalEndOfDay
+    clientLocalStartOfDay: selectedStartOfDay,
+    clientLocalEndOfDay: selectedEndOfDay
   } : "skip";
   const employees = useQuery(api.mutations.getEmployeesWithStatus, employeesArgs);
   const userRole = useQuery(api.auth.users.getUserRole);
 
   // Simple check: only use register log if it exists (backend will handle date logic)
-  const todayRegister = todayRegisterLog;
+  const selectedRegister = selectedRegisterLog;
 
   
   // Mutations
@@ -86,8 +134,8 @@ function RegisterDetail() {
 
   // Employee logs query (declared after state to avoid hoisting issues)
   const employeeLogs = useQuery(api.attendance.getEmployeeAttendanceLogs,
-    viewingEmployee && todayRegister ?
-      { employeeId: viewingEmployee.id as any, registerLogId: todayRegister._id as any } :
+    viewingEmployee && selectedRegister ?
+      { employeeId: viewingEmployee.id as any, registerLogId: selectedRegister._id as any } :
       "skip"
   );
 
@@ -188,27 +236,35 @@ function RegisterDetail() {
     return Math.max(0, presentTime - shopOpenTime);
   };
 
-  // Attendance action handlers
+  // Attendance action handlers (only available for today)
   const handleStartRegister = async () => {
     if (!registerId) {
       setError('Register ID not found');
       return;
     }
+    if (!isToday) {
+      setError('Cannot start register for past dates');
+      return;
+    }
     try {
       await startRegister({
         registerId: registerId,
-        clientLocalStartOfDay,
-        clientLocalEndOfDay
+        clientLocalStartOfDay: selectedStartOfDay,
+        clientLocalEndOfDay: selectedEndOfDay
       });
 
       // The register should be started now, let the component re-render automatically
-      // The todayRegisterLog query should update on its own due to Convex reactivity
+      // The selectedRegisterLog query should update on its own due to Convex reactivity
     } catch (err: any) {
       setError(err.message || 'Failed to start register');
     }
   };
 
   const handleMarkPresent = async (employeeId: string, registerLogId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await markPresent({ employeeId: employeeId as any, registerLogId: registerLogId as any });
     } catch (err: any) {
@@ -217,6 +273,10 @@ function RegisterDetail() {
   };
 
   const handleMarkAbsent = async (employeeId: string, registerLogId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await markAbsent({ employeeId: employeeId as any, registerLogId: registerLogId as any });
     } catch (err: any) {
@@ -225,6 +285,10 @@ function RegisterDetail() {
   };
 
   const handleStartBreak = async (employeeId: string, rollcallId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await startBreak({ employeeId: employeeId as any, rollcallId: rollcallId as any });
     } catch (err: any) {
@@ -233,6 +297,10 @@ function RegisterDetail() {
   };
 
   const handleEndBreak = async (attendanceLogId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await endBreak({ attendanceLogId: attendanceLogId as any });
     } catch (err: any) {
@@ -241,6 +309,10 @@ function RegisterDetail() {
   };
 
   const handleReturnFromAbsence = async (rollcallId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await returnFromAbsence({ rollcallId: rollcallId as any });
     } catch (err: any) {
@@ -249,6 +321,10 @@ function RegisterDetail() {
   };
 
   const handleMarkHalfDay = async (rollcallId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await markHalfDay({ rollcallId: rollcallId as any });
     } catch (err: any) {
@@ -257,6 +333,10 @@ function RegisterDetail() {
   };
 
   const handleRemoveHalfDay = async (rollcallId: string) => {
+    if (!isToday) {
+      setError('Cannot modify attendance for past dates');
+      return;
+    }
     try {
       await removeHalfDay({ rollcallId: rollcallId as any });
     } catch (err: any) {
@@ -468,7 +548,7 @@ function RegisterDetail() {
   };
 
   // Loading state
-  if (employees === undefined || todayRegisterLog === undefined) {
+  if (employees === undefined || selectedRegisterLog === undefined) {
     return (
       <div className="max-w-6xl mx-auto space-y-8">
         <div className="flex items-center justify-center py-16">
@@ -489,14 +569,15 @@ function RegisterDetail() {
           <div className="flex items-center gap-3 sm:gap-4">
             <Button variant="ghost" className='hover:bg-primary rounded-b-md bg-accent p-2 sm:p-3' asChild>
               <Link to="/registers">
-                <ArrowLeft className="font-semibold" size={32} sm:size={48} strokeWidth={3}/>
+                <ArrowLeft className="font-semibold" size={32}  strokeWidth={3}/>
               </Link>
             </Button>
             <div>
               <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
                 <Store className="w-6 h-6 sm:w-8 sm:h-8" />
-                {register?.name || 'Store'} Employees
+                {register?.name || 'Store'} 
               </h1>
+
 
             </div>
           </div>
@@ -514,7 +595,6 @@ function RegisterDetail() {
         onClose={() => setIsCreateDialogOpen(false)}
         onSubmit={handleCreateEmployee}
         title="Add New Employee"
-        description="Add a new employee to this store. Managers will need a 4-digit PIN for login."
         formData={formData}
         onInputChange={handleInputChange}
         loading={loading}
@@ -543,17 +623,51 @@ function RegisterDetail() {
     <Separator />
 
         {/* Register Status - Only show when register is started */}
-        {todayRegister && (
+        {selectedRegister && (
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Badge variant="secondary" className="flex items-center gap-2 px-3 py-1.5 text-sm">
                 <Clock className="w-4 h-4" />
-                Opened at {formatTimeFromTimestamp(todayRegister.timestamp)}
+                Opened at {formatTimeFromTimestamp(selectedRegister.timestamp)}
               </Badge>
-              <Badge variant="outline" className="flex items-center gap-2 px-3 py-1.5 text-sm">
-                <Calendar className="w-4 h-4" />
-                {new Date(todayRegister.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </Badge>
+              
+              {/* Date Filter - Moved from header */}
+              <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "justify-start text-left font-normal",
+                        !selectedDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="w-4 h-4 mr-2" />
+                      {format(selectedDate, "PPP")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (date) {
+                          const dateStr = date.toLocaleDateString('en-CA'); // YYYY-MM-DD format in local timezone
+                          console.log('Calendar date selected:', date, 'Setting URL to:', dateStr);
+                          setSelectedDateStr(dateStr);
+                        }
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {!isToday && (
+                  <Badge variant="secondary" className="text-xs">
+                    Historical View
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -561,7 +675,7 @@ function RegisterDetail() {
     <Separator />
 
         {/* Employee Filters and Search */}
-        {todayRegister && (
+        {selectedRegister && (
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex flex-wrap gap-2">
               <Button
@@ -616,51 +730,67 @@ function RegisterDetail() {
       </div>
 
       {/* Employees Grid */}
-      {!todayRegister ? (
+      {!selectedRegister ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Store className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">Register not started</h2>
+          <h2 className="text-2xl font-semibold mb-2">
+            {isToday ? 'Register not started' : 'No data for selected date'}
+          </h2>
           <p className="text-muted-foreground mb-6 max-w-md">
-            Start the register to begin managing employee attendance.
+            {isToday
+              ? 'Start the register to begin managing employee attendance.'
+              : `No attendance data found for ${format(selectedDate, 'PPP')}.`
+            }
           </p>
-          <Button onClick={handleStartRegister} disabled={loading} className="flex items-center gap-2">
-            <Store className="w-4 h-4" />
-            {loading ? 'Starting...' : 'Start Register'}
-          </Button>
-        </div>
-      ) : filteredEmployees.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Users className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-2xl font-semibold mb-2">No employees yet</h2>
-          <p className="text-muted-foreground mb-6 max-w-md">
-            Add your first employee to start managing attendance for this store.
-          </p>
-          <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Add Your First Employee
-          </Button>
+          {isToday && (
+            <Button onClick={handleStartRegister} disabled={loading} className="flex items-center gap-2">
+              <Store className="w-4 h-4" />
+              {loading ? 'Starting...' : 'Start Register'}
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredEmployees.map((employee) => (
-            <EmployeeCard
-              key={employee.id}
-              employee={employee}
-              todayRegisterLog={todayRegister}
-              userRole={userRole}
-              onMarkPresent={handleMarkPresent}
-              onMarkAbsent={handleMarkAbsent}
-              onStartBreak={handleStartBreak}
-              onEndBreak={handleEndBreak}
-              onReturnFromAbsence={handleReturnFromAbsence}
-              onViewLogs={handleViewLogs}
-              onEditEmployee={handleEditEmployee}
-              onMarkHalfDay={handleMarkHalfDay}
-              onRemoveHalfDay={handleRemoveHalfDay}
-              formatTimeWithAMPM={formatTimeWithAMPM}
-            />
-          ))}
-        </div>
+        <>
+ 
+      
+
+          {/* No employees case */}
+          {filteredEmployees.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Store className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+              <h2 className="text-2xl font-semibold mb-2">No employees yet</h2>
+              <p className="text-muted-foreground mb-6 max-w-md">
+                Add your first employee to start managing attendance for this store.
+              </p>
+              <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Your First Employee
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredEmployees.map((employee) => (
+                <EmployeeCard
+                  key={employee.id}
+                  employee={employee}
+                  todayRegisterLog={selectedRegister}
+                  userRole={userRole}
+                  isToday={isToday}
+                  onMarkPresent={handleMarkPresent}
+                  onMarkAbsent={handleMarkAbsent}
+                  onStartBreak={handleStartBreak}
+                  onEndBreak={handleEndBreak}
+                  onReturnFromAbsence={handleReturnFromAbsence}
+                  onViewLogs={handleViewLogs}
+                  onEditEmployee={handleEditEmployee}
+                  onMarkHalfDay={handleMarkHalfDay}
+                  onRemoveHalfDay={handleRemoveHalfDay}
+                  formatTimeWithAMPM={formatTimeWithAMPM}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
         {/* Log Drawer */}
