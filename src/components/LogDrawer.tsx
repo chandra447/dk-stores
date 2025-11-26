@@ -3,9 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Edit3, Save, X } from 'lucide-react';
 import { EmployeeLogData } from '../types/logs';
 import { BreakGauge } from './BreakGauge';
-import { TimeInput, formatTimeForInput, validateTimePair } from './ui/time-input';
+import { TimeInput, validateTimePair } from './ui/time-input';
 import { useMutation } from 'convex/react';
-import { api } from '../../convex/_generated/api';
+import { api, Id } from '../../convex/_generated/api';
 import { useState, useEffect } from 'react';
 
 interface LogDrawerProps {
@@ -36,7 +36,7 @@ export function LogDrawer({
   const updateAttendanceLog = useMutation(api.attendance.updateAttendanceLog);
 
   // State for editing functionality
-  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingLogId, setEditingLogId] = useState<Id<"attendanceLogs"> | null>(null);
   const [editForm, setEditForm] = useState({
     checkinTime: '',
     checkOutTime: ''
@@ -62,12 +62,24 @@ export function LogDrawer({
     }
   }, [isOpen]);
 
+  // Check if the register log is from today
+  const isToday = logs ? formatDate(logs.registerLog.timestamp) === formatDate(Date.now()) : false;
+
   // Start editing a log
-  const startEditing = (log: any) => {
+  const startEditing = (log: EmployeeLogData['logs'][0]) => {
+    // Only allow editing for today's logs
+    if (!isToday) {
+      setErrors(prev => ({
+        ...prev,
+        general: 'Only today\'s attendance logs can be edited'
+      }));
+      return;
+    }
+
     setEditingLogId(log.id);
     setEditForm({
-      checkinTime: formatTimeForInput(log.checkinTime),
-      checkOutTime: log.checkOutTime ? formatTimeForInput(log.checkOutTime) : ''
+      checkinTime: log.checkinTime.toString(),
+      checkOutTime: log.checkOutTime ? log.checkOutTime.toString() : ''
     });
     setEditTimestamps({
       checkinTimestamp: log.checkinTime,
@@ -211,12 +223,31 @@ export function LogDrawer({
 
               {/* Logs Table */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Break Logs</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Break Logs</h3>
+                  {!isToday && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-full text-sm">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Historical View
+                    </div>
+                  )}
+                </div>
 
                 {/* General Error Display */}
                 {errors.general && (
                   <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-sm text-red-600 dark:text-red-400">{errors.general}</p>
+                  </div>
+                )}
+
+                {/* Date restriction notice */}
+                {!isToday && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      <strong>Historical Data:</strong> Only today's attendance logs can be edited. These logs are preserved for record-keeping.
+                    </p>
                   </div>
                 )}
                 {logs.logs.length === 0 ? (
@@ -253,9 +284,9 @@ export function LogDrawer({
                             >
                               <td className="p-3">
                                 {isEditing ? (
-                                  <div className="min-w-[150px]">
+                                  <div className="min-w-[220px]">
                                     <TimeInput
-                                      value={editForm.checkinTime}
+                                      value={editTimestamps.checkinTimestamp || undefined}
                                       onChange={(value, timestamp) => handleFieldChange('checkinTime', value, timestamp)}
                                       placeholder="Check-in time"
                                       error={errors.checkin}
@@ -275,9 +306,9 @@ export function LogDrawer({
                               </td>
                               <td className="p-3">
                                 {isEditing ? (
-                                  <div className="min-w-[150px]">
+                                  <div className="min-w-[220px]">
                                     <TimeInput
-                                      value={editForm.checkOutTime}
+                                      value={editTimestamps.checkoutTimestamp || undefined}
                                       onChange={(value, timestamp) => handleFieldChange('checkOutTime', value, timestamp)}
                                       placeholder="Check-out time"
                                       error={errors.checkout}
@@ -313,14 +344,22 @@ export function LogDrawer({
                                     </Button>
                                   </div>
                                 ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => startEditing(log)}
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <Edit3 className="h-4 w-4" />
-                                  </Button>
+                                  <div className="relative group">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => startEditing(log)}
+                                      disabled={!isToday}
+                                      className={`h-8 w-8 p-0 ${!isToday ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      <Edit3 className="h-4 w-4" />
+                                    </Button>
+                                    {!isToday && (
+                                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                        Only today's logs can be edited
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                             </tr>

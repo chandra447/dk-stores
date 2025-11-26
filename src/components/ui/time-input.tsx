@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Input } from './input';
 import { Label } from './label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 
 interface TimeInputProps {
   value?: string;
@@ -13,21 +14,88 @@ interface TimeInputProps {
   required?: boolean;
 }
 
+interface TimeParts {
+  hour: string;
+  minute: string;
+  period: 'AM' | 'PM';
+}
+
 export function TimeInput({
   value,
   onChange,
-  placeholder = "HH:MM AM/PM",
   disabled = false,
   error,
   label,
   id,
   required = false,
 }: TimeInputProps) {
-  const [inputValue, setInputValue] = useState(value || '');
-  const [isValid, setIsValid] = useState(true);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [timeParts, setTimeParts] = useState<TimeParts>({ hour: '', minute: '', period: 'AM' });
 
-  // Convert Unix timestamp to time string for display
+  // Convert Unix timestamp to time parts for display
+  const timestampToTimeParts = (timestamp: number): TimeParts => {
+    const date = new Date(timestamp);
+    const hours24 = date.getHours();
+    const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+    const period = hours24 >= 12 ? 'PM' : 'AM';
+
+    return {
+      hour: hours12.toString().padStart(2, '0'),
+      minute: date.getMinutes().toString().padStart(2, '0'),
+      period: period as 'AM' | 'PM'
+    };
+  };
+
+  // Convert time parts to Unix timestamp for today's date
+  const timePartsToTimestamp = (parts: TimeParts): number | null => {
+    const hour = parseInt(parts.hour);
+    const minute = parseInt(parts.minute);
+
+    if (isNaN(hour) || isNaN(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+      return null;
+    }
+
+    // Convert 12-hour to 24-hour format
+    let hour24 = hour;
+    if (parts.period === 'PM' && hour !== 12) {
+      hour24 = hour + 12;
+    } else if (parts.period === 'AM' && hour === 12) {
+      hour24 = 0;
+    }
+
+    const today = new Date();
+    today.setHours(hour24, minute, 0, 0);
+    return today.getTime();
+  };
+
+  // Generate hour options (1-12)
+  const generateHourOptions = () => {
+    const options = [];
+    for (let i = 1; i <= 12; i++) {
+      options.push(i.toString().padStart(2, '0'));
+    }
+    return options;
+  };
+
+  // Generate minute options (0-59)
+  const generateMinuteOptions = () => {
+    const options = [];
+    for (let i = 0; i < 60; i++) {
+      options.push(i.toString().padStart(2, '0'));
+    }
+    return options;
+  };
+
+  // Handle time parts change
+  const handleTimePartsChange = (field: keyof TimeParts, value: string) => {
+    const newParts = { ...timeParts, [field]: value };
+    setTimeParts(newParts);
+
+    const timestamp = timePartsToTimestamp(newParts);
+    const displayTime = timestamp ? formatTimestamp(timestamp) : '';
+    onChange?.(displayTime, timestamp || undefined);
+  };
+
+  // Format timestamp to display string
   const formatTimestamp = (timestamp: number): string => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', {
@@ -37,54 +105,21 @@ export function TimeInput({
     });
   };
 
-  // Parse time string and return Unix timestamp for today's date
-  const parseTimeString = (timeString: string): number | null => {
-    if (!timeString.trim()) return null;
-
-    // Support multiple formats: "2:30 PM", "14:30", "2:30pm", etc.
-    const cleanTime = timeString.trim().toLowerCase();
-
-    // Try 12-hour format with AM/PM
-    const twelveHourMatch = cleanTime.match(/^(\d{1,2}):?(\d{2})?\s*(am|pm)$/);
-    if (twelveHourMatch) {
-      let [, hours, minutes = '00', period] = twelveHourMatch;
-      const hour = parseInt(hours);
-      const minute = parseInt(minutes);
-
-      if (hour > 12 || hour < 1 || minute > 59) return null;
-
-      const hour24 = period === 'pm' && hour !== 12 ? hour + 12 : period === 'am' && hour === 12 ? 0 : hour;
-
-      const today = new Date();
-      today.setHours(hour24, minute, 0, 0);
-      return today.getTime();
+  // Validate time and return error message if invalid
+  const validateTimeParts = (parts: TimeParts): string | null => {
+    if (!parts.hour || !parts.minute) {
+      return required ? 'Time is required' : null;
     }
 
-    // Try 24-hour format
-    const twentyFourHourMatch = cleanTime.match(/^(\d{1,2}):?(\d{2})?$/);
-    if (twentyFourHourMatch) {
-      let [, hours, minutes = '00'] = twentyFourHourMatch;
-      const hour = parseInt(hours);
-      const minute = parseInt(minutes);
+    const hour = parseInt(parts.hour);
+    const minute = parseInt(parts.minute);
 
-      if (hour > 23 || hour < 0 || minute > 59) return null;
-
-      const today = new Date();
-      today.setHours(hour, minute, 0, 0);
-      return today.getTime();
+    if (isNaN(hour) || isNaN(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+      return 'Invalid time';
     }
 
-    return null;
-  };
-
-  // Validate time string and return error message if invalid
-  const validateTime = (timeString: string): string | null => {
-    if (!timeString.trim()) return required ? 'Time is required' : null;
-
-    const timestamp = parseTimeString(timeString);
-    if (timestamp === null) {
-      return 'Invalid time format. Use HH:MM AM/PM or HH:MM';
-    }
+    const timestamp = timePartsToTimestamp(parts);
+    if (!timestamp) return 'Invalid time';
 
     const now = Date.now();
     if (timestamp > now) {
@@ -94,37 +129,30 @@ export function TimeInput({
     return null;
   };
 
-  // Handle input change
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setInputValue(newValue);
-
-    const validationError = validateTime(newValue);
-    setIsValid(!validationError);
-
-    const timestamp = parseTimeString(newValue);
-    onChange?.(newValue, timestamp || undefined);
-  };
-
-  // Handle blur for final validation
-  const handleBlur = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    const timestamp = parseTimeString(newValue);
-
-    if (timestamp) {
-      // Format the time for display
-      const formatted = formatTimestamp(timestamp);
-      setInputValue(formatted);
-      onChange?.(formatted, timestamp);
-    }
-  };
-
-  // Update input value when prop value changes
+  // Update time parts when value prop changes
   useEffect(() => {
-    if (value !== undefined && value !== inputValue) {
-      setInputValue(value);
+    if (value) {
+      // Convert to timestamp if it's a number or parse if it's a string
+      let timestamp: number;
+      if (typeof value === 'number') {
+        timestamp = value;
+      } else {
+        // Try to parse as a date string, fallback to current time if invalid
+        const parsed = Date.parse(value);
+        timestamp = isNaN(parsed) ? Date.now() : parsed;
+      }
+
+      if (!isNaN(timestamp) && timestamp > 0) {
+        const parts = timestampToTimeParts(timestamp);
+        setTimeParts(parts);
+      }
+    } else {
+      setTimeParts({ hour: '', minute: '', period: 'AM' });
     }
-  }, [value, inputValue]);
+  }, [value]);
+
+  const validationError = validateTimeParts(timeParts);
+  const hasError = error || validationError;
 
   return (
     <div className="space-y-2">
@@ -134,24 +162,68 @@ export function TimeInput({
           {required && <span className="text-red-500 ml-1">*</span>}
         </Label>
       )}
-      <Input
-        ref={inputRef}
-        id={id}
-        type="text"
-        value={inputValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={`font-mono ${!isValid || error ? 'border-red-500 focus:border-red-500' : ''}`}
-      />
-      {(!isValid || error) && (
+      <div className="flex items-center gap-1">
+        {/* Hour Input */}
+        <Select
+          value={timeParts.hour}
+          onValueChange={(value) => handleTimePartsChange('hour', value)}
+          disabled={disabled}
+        >
+          <SelectTrigger className={`w-[70px] ${hasError ? 'border-red-500 focus:border-red-500' : ''}`}>
+            <SelectValue placeholder="HH" />
+          </SelectTrigger>
+          <SelectContent>
+            {generateHourOptions().map((hour) => (
+              <SelectItem key={hour} value={hour}>
+                {hour}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <span className="text-sm font-medium">:</span>
+
+        {/* Minute Input */}
+        <Select
+          value={timeParts.minute}
+          onValueChange={(value) => handleTimePartsChange('minute', value)}
+          disabled={disabled}
+        >
+          <SelectTrigger className={`w-[70px] ${hasError ? 'border-red-500 focus:border-red-500' : ''}`}>
+            <SelectValue placeholder="MM" />
+          </SelectTrigger>
+          <SelectContent>
+            {generateMinuteOptions().map((minute) => (
+              <SelectItem key={minute} value={minute}>
+                {minute}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* AM/PM Select */}
+        <Select
+          value={timeParts.period}
+          onValueChange={(value) => handleTimePartsChange('period', value as 'AM' | 'PM')}
+          disabled={disabled}
+        >
+          <SelectTrigger className={`w-[70px] ${hasError ? 'border-red-500 focus:border-red-500' : ''}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="AM">AM</SelectItem>
+            <SelectItem value="PM">PM</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {hasError && (
         <p className="text-sm text-red-500">
-          {error || 'Invalid time format. Use HH:MM AM/PM or 24-hour format'}
+          {error || validationError}
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        Format: "2:30 PM" or "14:30"
+        Select hour, minute, and AM/PM
       </p>
     </div>
   );

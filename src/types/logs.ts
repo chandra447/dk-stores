@@ -1,3 +1,5 @@
+import { Id } from '../../convex/_generated/dataModel';
+
 export interface EmployeeLogData {
   employee: {
     id: string;
@@ -13,7 +15,7 @@ export interface EmployeeLogData {
     timestamp: number;
   };
   logs: Array<{
-    id: string;
+    id: Id<"attendanceLogs">;
     checkinTime: number;
     checkOutTime?: number;
     isActive: boolean;
