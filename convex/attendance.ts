@@ -581,6 +581,78 @@ export const getActiveAttendanceLogs = query({
   },
 });
 
+// Update attendance log times
+export const updateAttendanceLog = mutation({
+  args: {
+    attendanceLogId: v.id("attendanceLogs"),
+    checkinTime: v.number(),
+    checkOutTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("You must be logged in to update attendance logs");
+    }
+
+    // Get the attendance log
+    const attendanceLog = await ctx.db.get(args.attendanceLogId);
+    if (!attendanceLog) {
+      throw new Error("Attendance log not found");
+    }
+
+    // Strict validation rules
+    const now = Date.now();
+
+    // 1. No future timestamps allowed
+    if (args.checkinTime > now) {
+      throw new Error("Check-in time cannot be in the future");
+    }
+    if (args.checkOutTime && args.checkOutTime > now) {
+      throw new Error("Check-out time cannot be in the future");
+    }
+
+    // 2. Check-in must be before check-out (when both exist)
+    if (args.checkOutTime && args.checkinTime >= args.checkOutTime) {
+      throw new Error("Check-in time must be before check-out time");
+    }
+
+    // Verify access through employee and register
+    const [rollcall, employee] = await Promise.all([
+      ctx.db.get(attendanceLog.employeeRollcallId),
+      ctx.db.get(attendanceLog.employeeId),
+    ]);
+
+    if (!rollcall || !employee) {
+      throw new Error("Rollcall or employee not found");
+    }
+
+    const registerLog = await ctx.db.get(rollcall.registerLogId);
+    if (!registerLog) {
+      throw new Error("Register log not found");
+    }
+
+    const register = await ctx.db.get(registerLog.registerId);
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
+    }
+
+    // Update attendance log with new times
+    await ctx.db.patch(args.attendanceLogId, {
+      checkinTime: args.checkinTime,
+      checkOutTime: args.checkOutTime,
+      updatedAt: now,
+    });
+
+    return args.attendanceLogId;
+  },
+});
+
 // Get attendance logs for an employee for a specific date
 export const getEmployeeAttendanceLogs = query({
   args: {

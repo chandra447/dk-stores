@@ -1,8 +1,12 @@
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { Edit3 } from 'lucide-react';
+import { Edit3, Save, X } from 'lucide-react';
 import { EmployeeLogData } from '../types/logs';
 import { BreakGauge } from './BreakGauge';
+import { TimeInput, formatTimeForInput, validateTimePair } from './ui/time-input';
+import { useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import { useState, useEffect } from 'react';
 
 interface LogDrawerProps {
   isOpen: boolean;
@@ -29,6 +33,119 @@ export function LogDrawer({
   formatTotalDuration,
   calculateLateness
 }: LogDrawerProps) {
+  const updateAttendanceLog = useMutation(api.attendance.updateAttendanceLog);
+
+  // State for editing functionality
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    checkinTime: '',
+    checkOutTime: ''
+  });
+  const [editTimestamps, setEditTimestamps] = useState({
+    checkinTimestamp: 0,
+    checkoutTimestamp: 0
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [errors, setErrors] = useState({
+    checkin: '',
+    checkout: '',
+    general: ''
+  });
+
+  // Reset editing state when drawer closes
+  useEffect(() => {
+    if (!isOpen) {
+      setEditingLogId(null);
+      setEditForm({ checkinTime: '', checkOutTime: '' });
+      setEditTimestamps({ checkinTimestamp: 0, checkoutTimestamp: 0 });
+      setErrors({ checkin: '', checkout: '', general: '' });
+    }
+  }, [isOpen]);
+
+  // Start editing a log
+  const startEditing = (log: any) => {
+    setEditingLogId(log.id);
+    setEditForm({
+      checkinTime: formatTimeForInput(log.checkinTime),
+      checkOutTime: log.checkOutTime ? formatTimeForInput(log.checkOutTime) : ''
+    });
+    setEditTimestamps({
+      checkinTimestamp: log.checkinTime,
+      checkoutTimestamp: log.checkOutTime || 0
+    });
+    setErrors({ checkin: '', checkout: '', general: '' });
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingLogId(null);
+    setEditForm({ checkinTime: '', checkOutTime: '' });
+    setEditTimestamps({ checkinTimestamp: 0, checkoutTimestamp: 0 });
+    setErrors({ checkin: '', checkout: '', general: '' });
+  };
+
+  // Handle form field changes
+  const handleFieldChange = (field: 'checkinTime' | 'checkOutTime', value: string, timestamp?: number) => {
+    setEditForm(prev => ({ ...prev, [field]: value }));
+    if (timestamp) {
+      setEditTimestamps(prev => ({
+        ...prev,
+        [field === 'checkinTime' ? 'checkinTimestamp' : 'checkoutTimestamp']: timestamp
+      }));
+    }
+
+    // Clear specific field error when user starts typing
+    setErrors(prev => ({ ...prev, [field === 'checkinTime' ? 'checkin' : 'checkout']: '' }));
+  };
+
+  // Save edited log
+  const saveLog = async () => {
+    if (!editingLogId) return;
+
+    // Validation
+    const newErrors = { checkin: '', checkout: '', general: '' };
+
+    if (!editTimestamps.checkinTimestamp) {
+      newErrors.checkin = 'Check-in time is required';
+    }
+
+    if (editTimestamps.checkoutTimestamp && !editTimestamps.checkinTimestamp) {
+      newErrors.general = 'Cannot set check-out time without valid check-in time';
+    }
+
+    // Validate time pair if both are set
+    if (editTimestamps.checkinTimestamp && editTimestamps.checkoutTimestamp) {
+      const pairError = validateTimePair(editTimestamps.checkinTimestamp, editTimestamps.checkoutTimestamp);
+      if (pairError) {
+        newErrors.general = pairError;
+      }
+    }
+
+    setErrors(newErrors);
+
+    if (newErrors.checkin || newErrors.checkout || newErrors.general) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateAttendanceLog({
+        attendanceLogId: editingLogId,
+        checkinTime: editTimestamps.checkinTimestamp,
+        checkOutTime: editTimestamps.checkoutTimestamp || undefined
+      });
+
+      // Reset editing state on success
+      setEditingLogId(null);
+      setEditForm({ checkinTime: '', checkOutTime: '' });
+      setEditTimestamps({ checkinTimestamp: 0, checkoutTimestamp: 0 });
+      setErrors({ checkin: '', checkout: '', general: '' });
+    } catch (error: any) {
+      setErrors(prev => ({ ...prev, general: error.message || 'Failed to update log' }));
+    } finally {
+      setIsSaving(false);
+    }
+  };
   return (
     <Drawer open={isOpen} onOpenChange={onClose}>
       <DrawerContent className="h-[80vh]">
@@ -95,6 +212,13 @@ export function LogDrawer({
               {/* Logs Table */}
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Break Logs</h3>
+
+                {/* General Error Display */}
+                {errors.general && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-600 dark:text-red-400">{errors.general}</p>
+                  </div>
+                )}
                 {logs.logs.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     No break logs for this employee today
@@ -115,33 +239,89 @@ export function LogDrawer({
                           const duration = log.checkOutTime
                             ? log.checkOutTime - log.checkinTime
                             : Date.now() - log.checkinTime;
+                          const isEditing = editingLogId === log.id;
 
                           return (
                             <tr
                               key={log.id}
-                              className={`border-b ${log.isActive
-                                  ? 'bg-red-50 dark:bg-red-950'
-                                  : 'hover:bg-muted/25'
+                              className={`border-b ${isEditing
+                                  ? 'bg-blue-50 dark:bg-blue-950'
+                                  : log.isActive
+                                    ? 'bg-red-50 dark:bg-red-950'
+                                    : 'hover:bg-muted/25'
                                 }`}
                             >
                               <td className="p-3">
-                                {formatTimeWithAMPM(log.checkinTime)}
-                                {log.isActive && (
-                                  <span className="ml-2 text-xs text-red-600 dark:text-red-400 font-medium">
-                                    (ACTIVE)
-                                  </span>
+                                {isEditing ? (
+                                  <div className="min-w-[150px]">
+                                    <TimeInput
+                                      value={editForm.checkinTime}
+                                      onChange={(value, timestamp) => handleFieldChange('checkinTime', value, timestamp)}
+                                      placeholder="Check-in time"
+                                      error={errors.checkin}
+                                      required
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    {formatTimeWithAMPM(log.checkinTime)}
+                                    {log.isActive && (
+                                      <span className="ml-2 text-xs text-red-600 dark:text-red-400 font-medium">
+                                        (ACTIVE)
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </td>
                               <td className="p-3">
-                                {log.checkOutTime ? formatTimeWithAMPM(log.checkOutTime) : '-'}
+                                {isEditing ? (
+                                  <div className="min-w-[150px]">
+                                    <TimeInput
+                                      value={editForm.checkOutTime}
+                                      onChange={(value, timestamp) => handleFieldChange('checkOutTime', value, timestamp)}
+                                      placeholder="Check-out time"
+                                      error={errors.checkout}
+                                    />
+                                  </div>
+                                ) : (
+                                  log.checkOutTime ? formatTimeWithAMPM(log.checkOutTime) : '-'
+                                )}
                               </td>
                               <td className="p-3">
                                 {formatBreakDuration(duration)}
                               </td>
                               <td className="p-3">
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <Edit3 className="h-4 w-4" />
-                                </Button>
+                                {isEditing ? (
+                                  <div className="flex gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={saveLog}
+                                      disabled={isSaving}
+                                      className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                    >
+                                      <Save className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={cancelEditing}
+                                      disabled={isSaving}
+                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => startEditing(log)}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <Edit3 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </td>
                             </tr>
                           );
