@@ -1,6 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Store } from 'lucide-react';
 
 function PublicLayout() {
   const location = useLocation();
@@ -16,9 +15,11 @@ function PublicLayout() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <Store className="text-white w-5 h-5" />
-              </div>
+              <img
+                src="/logo_transparent.png"
+                alt="DK Store Logo"
+                className="w-8 h-8 object-contain"
+              />
               <Link
                 to="/"
                 className="text-xl font-semibold text-foreground hover:text-primary transition-colors"

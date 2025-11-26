@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { REGEXP_ONLY_DIGITS } from 'input-otp';
-import { Store, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import AnimatedGradientBackground from '@/components/ui/animated-gradient-background';
 
 interface FormData {
@@ -137,9 +137,11 @@ function Login() {
         {/* Logo and Brand */}
         <div className="text-center mb-4">
           <div className="flex justify-center mb-3">
-            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
-              <Store className="text-white text-2xl" />
-            </div>
+            <img
+              src="/logo_transparent.png"
+              alt="DK Store Logo"
+              className="w-16 h-16 object-contain"
+            />
           </div>
           <h1 className="text-2xl font-semibold text-foreground mb-2">Welcome to DK Stores</h1>
           <p className="text-muted-foreground">Sign in to your account to continue</p>
