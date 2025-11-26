@@ -113,7 +113,7 @@ export const getMyRegisters = query({
       return [];
     }
 
-    // Get registers owned by this user (admin/owner)
+    // Get registers owned by this user (admin/owner) - FIXED: Only show owned registers
     const ownedRegisters = await ctx.db.query("registers")
       .filter(q => q.eq(q.field("ownerId"), userId))
       .filter(q => q.eq(q.field("isActive"), true))
@@ -312,4 +312,30 @@ export const getTodayRegisterLog = query({
     return registerLog;
   },
 });
+
+// Get all registers accessible to the current user (for dashboard - admin/owner only)
+export const getAccessibleRegisters = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return [];
+    }
+
+    // Get registers owned by this user (admin/owner)
+    const registers = await ctx.db.query("registers")
+      .filter(q => q.and(
+        q.eq(q.field("ownerId"), userId),
+        q.eq(q.field("isActive"), true)
+      ))
+      .collect();
+
+    return registers.map(register => ({
+      _id: register._id,
+      name: register.name,
+      address: register.address,
+    }));
+  },
+});
+
 

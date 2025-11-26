@@ -383,3 +383,70 @@ export const updateEmployee = mutation({
   },
 });
 
+// Get employees by register (for dashboard filters)
+export const getEmployeesByRegister = query({
+  args: {
+    registerId: v.optional(v.id("registers")),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return [];
+    }
+
+    let employees: any[] = [];
+
+    if (args.registerId) {
+      // Check access to the register
+      const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+      if (!hasAccess) {
+        return [];
+      }
+
+      employees = await ctx.db.query("employees")
+        .filter(q => q.and(
+          q.eq(q.field("registerId"), args.registerId),
+          q.eq(q.field("isActive"), true)
+        ))
+        .collect();
+    } else {
+      // Get employees for all registers the user has access to
+      const user = await ctx.db.query("users").filter(q => q.eq(q.field("_id"), userId)).first();
+      if (!user) {
+        return [];
+      }
+
+      if (user.role === "admin") {
+        // Admin can see all employees
+        employees = await ctx.db.query("employees")
+          .filter(q => q.eq(q.field("isActive"), true))
+          .collect();
+      } else {
+        // Manager - get employees from their assigned register
+        const managerEmployee = await ctx.db.query("employees")
+          .withIndex("byUser", (q) => q.eq("userId", userId))
+          .filter(q => q.and(
+            q.eq(q.field("isManager"), true),
+            q.eq(q.field("isActive"), true)
+          ))
+          .first();
+
+        if (managerEmployee && managerEmployee.registerId) {
+          employees = await ctx.db.query("employees")
+            .filter(q => q.and(
+              q.eq(q.field("registerId"), managerEmployee.registerId),
+              q.eq(q.field("isActive"), true)
+            ))
+            .collect();
+        }
+      }
+    }
+
+    return employees.map(employee => ({
+      _id: employee._id,
+      name: employee.name,
+      ratePerDay: employee.ratePerDay,
+    }));
+  },
+});
+

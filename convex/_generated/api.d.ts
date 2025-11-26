@@ -12,6 +12,7 @@ import type * as attendance from "../attendance.js";
 import type * as auth from "../auth.js";
 import type * as auth_login from "../auth/login.js";
 import type * as auth_users from "../auth/users.js";
+import type * as dashboard from "../dashboard.js";
 import type * as employees from "../employees.js";
 import type * as http from "../http.js";
 import type * as mutations from "../mutations.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   "auth/login": typeof auth_login;
   "auth/users": typeof auth_users;
+  dashboard: typeof dashboard;
   employees: typeof employees;
   http: typeof http;
   mutations: typeof mutations;
