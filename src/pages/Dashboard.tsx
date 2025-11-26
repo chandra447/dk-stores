@@ -394,7 +394,7 @@ function Dashboard() {
                   <ChartTooltip
                     content={<ChartTooltipContent />}
                     labelFormatter={(value) => format(new Date(value), "MMM dd, yyyy")}
-                    formatter={(value: number) => [`${value} min`, 'Break Duration']}
+                    formatter={(value: number) => [`${value} min`, ' Break Duration']}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
                   {/* Add a horizontal reference line for allowed break time */}

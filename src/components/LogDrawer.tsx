@@ -216,6 +216,27 @@ export function LogDrawer({
                     )}
                   </div>
                 )}
+
+                {/* Extra Time Used */}
+                {(() => {
+                  const totalBreakUsed = Math.floor(logs.logs.reduce((total, log) => {
+                    return total + (log.checkOutTime
+                      ? log.checkOutTime - log.checkinTime
+                      : Date.now() - log.checkinTime);
+                  }, 0) / (1000 * 60));
+                  
+                  if (totalBreakUsed > logs.employee.allowedBreakTime) {
+                    const extraTimeUsed = totalBreakUsed - logs.employee.allowedBreakTime;
+                    const extraTimeMs = extraTimeUsed * 60 * 1000;
+                    
+                    return (
+                      <div className="px-3 py-1.5 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-full text-sm">
+                        ⏰ Extra Time Used: {formatBreakDuration(extraTimeMs)}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Logs Table */}
