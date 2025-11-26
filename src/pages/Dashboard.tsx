@@ -491,14 +491,9 @@ function Dashboard() {
             isActive: log.isActive
           }))
         } : null}
-        formatTime={(minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`}
         formatTimeWithAMPM={(timestamp) => formatDateFns(timestamp, 'h:mm a')}
         formatDate={(timestamp) => formatDateFns(timestamp, 'PPP')}
         formatBreakDuration={(ms) => {
-          const minutes = Math.floor(ms / (1000 * 60));
-          return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-        }}
-        formatTotalDuration={(ms) => {
           const minutes = Math.floor(ms / (1000 * 60));
           return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
         }}

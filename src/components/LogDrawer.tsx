@@ -5,7 +5,8 @@ import { EmployeeLogData } from '../types/logs';
 import { BreakGauge } from './BreakGauge';
 import { TimeInput, validateTimePair } from './ui/time-input';
 import { useMutation } from 'convex/react';
-import { api, Id } from '../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
+import { Id } from '../../convex/_generated/dataModel';
 import { useState, useEffect } from 'react';
 
 interface LogDrawerProps {
@@ -13,11 +14,9 @@ interface LogDrawerProps {
   onClose: () => void;
   employeeName: string;
   logs: EmployeeLogData | null;
-  formatTime: (minutes: number) => string;
   formatTimeWithAMPM: (timestamp: number) => string;
   formatDate: (timestamp: number) => string;
   formatBreakDuration: (milliseconds: number) => string;
-  formatTotalDuration: (totalMilliseconds: number) => string;
   calculateLateness: (presentTime: number, shopOpenTime: number) => number;
 }
 
@@ -26,11 +25,9 @@ export function LogDrawer({
   onClose,
   employeeName,
   logs,
-  formatTime,
   formatTimeWithAMPM,
   formatDate,
   formatBreakDuration,
-  formatTotalDuration,
   calculateLateness
 }: LogDrawerProps) {
   const updateAttendanceLog = useMutation(api.attendance.updateAttendanceLog);

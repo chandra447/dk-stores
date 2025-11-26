@@ -799,11 +799,9 @@ function RegisterDetail() {
           onClose={() => setIsLogDrawerOpen(false)}
           employeeName={viewingEmployee?.name || ''}
           logs={employeeLogs || null}
-          formatTime={formatTime}
           formatTimeWithAMPM={formatTimeWithAMPM}
           formatDate={formatDate}
           formatBreakDuration={formatBreakDuration}
-          formatTotalDuration={formatTotalDuration}
           calculateLateness={calculateLateness}
         />
     </div>
