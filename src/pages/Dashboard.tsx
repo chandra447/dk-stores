@@ -29,13 +29,6 @@ import { format as formatDateFns } from 'date-fns';
 
 
 
-interface ChartData {
-  date: string;
-  workDuration: number;
-  breakDuration: number;
-  totalHours: number;
-}
-
 function Dashboard() {
   const { user, isAdmin, isManager } = useAuth();
 
@@ -140,24 +133,11 @@ function Dashboard() {
       .map((d: any) => ({
         ...d,
         breakDurationMinutes: (d.breakDuration || 0) * 60, // Convert hours to minutes
+        date: format(new Date(d.date), "dd/MM"), // Format date for chart display (2 decimals)
       }));
   }, [hourlyData]);
 
-  // Calculate adaptive Y-axis domain to accommodate both data and reference line
-  const yAxisDomain = useMemo(() => {
-    if (!chartData || chartData.length === 0) return [0, 'auto'];
 
-    const maxBreakDuration = Math.max(...chartData.map((d: any) => d.breakDurationMinutes || 0));
-    const allowedBreakTime = stats.allowedBreakTimeMinutes || 0;
-
-    // Find the maximum value between actual data and reference line
-    const maxValue = Math.max(maxBreakDuration, allowedBreakTime);
-
-    // Add 20% padding on top for better visibility
-    const upperBound = Math.ceil(maxValue * 1.2);
-
-    return [0, upperBound];
-  }, [chartData, stats.allowedBreakTimeMinutes]);
 
   const chartConfig = {
     breakDurationMinutes: {
@@ -384,7 +364,6 @@ function Dashboard() {
                     tickLine={false}
                     tickMargin={10}
                     axisLine={false}
-                    tickFormatter={(value) => format(new Date(value), "dd/MM")}
                   />
                   <YAxis
                     tickLine={false}
@@ -393,7 +372,7 @@ function Dashboard() {
                   />
                   <ChartTooltip
                     content={<ChartTooltipContent />}
-                    labelFormatter={(value) => format(new Date(value), "MMM dd, yyyy")}
+                    labelFormatter={(value) => value}
                     formatter={(value: number) => [`${value} min`, ' Break Duration']}
                   />
                   <ChartLegend content={<ChartLegendContent />} />

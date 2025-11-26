@@ -11,7 +11,7 @@ import { BreakGauge } from './BreakGauge';
 interface EmployeeCardProps {
   employee: Employee & { usedBreakTime?: number };
   todayRegisterLog: any;
-  userRole: string | null;
+  isAdmin: boolean;
   isToday: boolean;
   onMarkPresent: (employeeId: string, registerLogId: string) => void;
   onMarkAbsent: (employeeId: string, registerLogId: string) => void;
@@ -81,7 +81,7 @@ function BreakTimer({ startTime, className = "" }: { startTime: number | null; c
 export function EmployeeCard({
   employee,
   todayRegisterLog,
-  userRole,
+  isAdmin,
   isToday,
   onMarkPresent,
   onMarkAbsent,
@@ -118,7 +118,7 @@ export function EmployeeCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {userRole !== 'manager' && (
+              {isAdmin && (
                 <DropdownMenuItem onClick={() => onEditEmployee(employee)}>
                   <Edit3 className="w-4 h-4 mr-2" />
                   Edit Employee

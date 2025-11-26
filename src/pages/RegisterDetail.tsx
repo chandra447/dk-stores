@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api';
 import { Id } from '../../convex/_generated/dataModel';
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '../hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -103,7 +104,7 @@ function RegisterDetail() {
     clientLocalEndOfDay: selectedEndOfDay
   } : "skip";
   const employees = useQuery(api.mutations.getEmployeesWithStatus, employeesArgs);
-  const userRole = useQuery(api.auth.users.getUserRole);
+  const { isAdmin } = useAuth();
 
   // Simple check: only use register log if it exists (backend will handle date logic)
   const selectedRegister = selectedRegisterLog;
@@ -224,14 +225,7 @@ function RegisterDetail() {
     }
   };
 
-  const formatTotalDuration = (totalMilliseconds: number): string => {
-    const totalSeconds = Math.floor(totalMilliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  };
-
+  
   const calculateLateness = (presentTime: number, shopOpenTime: number): number => {
     return Math.max(0, presentTime - shopOpenTime);
   };
@@ -582,14 +576,16 @@ function RegisterDetail() {
             </div>
           </div>
 
-          {/* Create Employee Button */}
-          <Button
-        className="flex items-center gap-2 w-full sm:w-auto"
-        onClick={() => setIsCreateDialogOpen(true)}
-      >
-        <Plus className="w-4 h-4" />
-        Add Employee
-      </Button>
+          {/* Create Employee Button - Admin Only */}
+          {isAdmin && (
+            <Button
+              className="flex items-center gap-2 w-full sm:w-auto"
+              onClick={() => setIsCreateDialogOpen(true)}
+            >
+              <Plus className="w-4 h-4" />
+              Add Employee
+            </Button>
+          )}
       <EmployeeDialog
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
@@ -760,12 +756,16 @@ function RegisterDetail() {
               <Store className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
               <h2 className="text-2xl font-semibold mb-2">No employees yet</h2>
               <p className="text-muted-foreground mb-6 max-w-md">
-                Add your first employee to start managing attendance for this store.
+                {isAdmin ?
+                  'Add your first employee to start managing attendance for this store.' :
+                  'No employees have been added to this store yet.'}
               </p>
-              <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Add Your First Employee
-              </Button>
+              {isAdmin && (
+                <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Your First Employee
+                </Button>
+              )}
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -774,7 +774,7 @@ function RegisterDetail() {
                   key={employee.id}
                   employee={employee}
                   todayRegisterLog={selectedRegister}
-                  userRole={userRole}
+                  isAdmin={isAdmin}
                   isToday={isToday}
                   onMarkPresent={handleMarkPresent}
                   onMarkAbsent={handleMarkAbsent}
