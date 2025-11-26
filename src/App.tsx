@@ -9,6 +9,7 @@ import { Toaster } from 'sonner';
 import PublicLayout from './components/Layout/PublicLayout';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminProtectedRoute from './components/AdminProtectedRoute';
 
 // Page Components
 import About from './pages/About';
@@ -46,16 +47,25 @@ function AppContent() {
 
       <Authenticated>
         <Routes>
-          {/* Protected Routes */}
+          {/* Admin-Only Dashboard Route */}
+          <Route path="/" element={
+            <AdminProtectedRoute>
+              <DashboardLayout />
+            </AdminProtectedRoute>
+          }>
+            <Route path="dashboard" element={<Dashboard />} />
+          </Route>
+
+          {/* General Protected Routes */}
           <Route path="/" element={
             <ProtectedRoute>
               <DashboardLayout />
             </ProtectedRoute>
           }>
             <Route path="registers" element={<Registers />} />
-            <Route path="dashboard" element={<Dashboard />} />
             <Route path="registers/:id" element={<RegisterDetail />} />
           </Route>
+
           {/* Default redirect for authenticated users */}
           <Route path="*" element={<Navigate to="/registers" replace />} />
         </Routes>

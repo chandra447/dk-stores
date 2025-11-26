@@ -71,12 +71,14 @@ function DashboardLayout() {
               >
                 Registers
               </Link>
-              <Link
-                to="/dashboard"
-                className={`${isActiveRoute('/dashboard') ? 'text-primary font-medium' : 'text-foreground hover:text-primary'} transition-colors`}
-              >
-                Dashboard
-              </Link>
+              {isAdmin && (
+                <Link
+                  to="/dashboard"
+                  className={`${isActiveRoute('/dashboard') ? 'text-primary font-medium' : 'text-foreground hover:text-primary'} transition-colors`}
+                >
+                  Dashboard
+                </Link>
+              )}
             </div>
 
             {/* User menu */}
@@ -143,13 +145,15 @@ function DashboardLayout() {
                 >
                   Registers
                 </Link>
-                <Link
-                  to="/dashboard"
-                  onClick={() => setIsMenuOpen(false)}
-                  className={`${isActiveRoute('/dashboard') ? 'text-primary font-medium' : 'text-foreground hover:text-primary'} block px-3 py-2 text-base transition-colors`}
-                >
-                  Dashboard
-                </Link>
+                {isAdmin && (
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setIsMenuOpen(false)}
+                    className={`${isActiveRoute('/dashboard') ? 'text-primary font-medium' : 'text-foreground hover:text-primary'} block px-3 py-2 text-base transition-colors`}
+                  >
+                    Dashboard
+                  </Link>
+                )}
               </div>
             </div>
           )}
