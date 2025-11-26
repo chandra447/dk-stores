@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { NuqsAdapter } from 'nuqs/adapters/react-router/v6';
 import { ConvexReactClient, Authenticated, Unauthenticated, AuthLoading } from 'convex/react';
 import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import { Spinner } from '@/components/ui/spinner';
@@ -66,10 +67,12 @@ function AppContent() {
 function App() {
   return (
     <ConvexAuthProvider client={convex}>
-      <Router>
-        <AppContent />
-        <Toaster position="bottom-left" theme="dark" />
-      </Router>
+      <NuqsAdapter>
+        <Router>
+          <AppContent />
+          <Toaster position="bottom-left" theme="dark" />
+        </Router>
+      </NuqsAdapter>
     </ConvexAuthProvider>
   );
 }

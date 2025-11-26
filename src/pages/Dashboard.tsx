@@ -3,6 +3,8 @@ import { format } from 'date-fns';
 import { CalendarIcon, Clock } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { useQueryStates } from 'nuqs';
+import { parseAsString, parseAsStringLiteral } from 'nuqs';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +28,32 @@ import {
 import { LogDrawer } from '@/components/LogDrawer';
 import { format as formatDateFns } from 'date-fns';
 
+// Custom parser for date range
+const parseAsDateRange = {
+  ...parseAsString,
+  parse: (value: string) => {
+    try {
+      if (!value || value === 'undefined') return undefined;
 
+      const [fromStr, toStr] = value.split('..');
+      if (!fromStr || !toStr) return undefined;
+
+      const from = new Date(fromStr);
+      const to = new Date(toStr);
+
+      // Validate dates
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) return undefined;
+
+      return { from, to };
+    } catch {
+      return undefined;
+    }
+  },
+  serialize: (value: DateRange | undefined) => {
+    if (!value || !value.from || !value.to) return null;
+    return `${value.from.toISOString()}..${value.to.toISOString()}`;
+  }
+};
 
 interface ChartData {
   date: string;
@@ -38,13 +65,20 @@ interface ChartData {
 function Dashboard() {
   const { user, isAdmin, isManager } = useAuth();
 
-  // Filters state
-  const [selectedRegister, setSelectedRegister] = useState<string>('');
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+  // Default date range (current month)
+  const defaultDateRange: DateRange = {
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     to: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
+  };
+
+  // URL-based filters state
+  const [filters, setFilters] = useQueryStates({
+    register: parseAsString.withDefault(''),
+    employee: parseAsString.withDefault(''),
+    dateRange: parseAsDateRange.withDefault(defaultDateRange)
   });
+
+  const { register: selectedRegister, employee: selectedEmployee, dateRange } = filters;
 
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -142,7 +176,7 @@ function Dashboard() {
             {/* Register Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Register</label>
-              <Select value={selectedRegister} onValueChange={setSelectedRegister}>
+              <Select value={selectedRegister} onValueChange={(value) => setFilters({ register: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select register" />
                 </SelectTrigger>
@@ -159,7 +193,7 @@ function Dashboard() {
             {/* Employee Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Employee</label>
-              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+              <Select value={selectedEmployee} onValueChange={(value) => setFilters({ employee: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select employee" />
                 </SelectTrigger>
@@ -207,7 +241,7 @@ function Dashboard() {
                     mode="range"
                     defaultMonth={dateRange?.from}
                     selected={dateRange}
-                    onSelect={setDateRange}
+                    onSelect={(value) => setFilters({ dateRange: value })}
                     numberOfMonths={2}
                   />
                 </PopoverContent>
