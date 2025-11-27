@@ -78,16 +78,12 @@ function RegisterDetail() {
 
   // Debug logging for date changes
   useEffect(() => {
-    console.log('Date state changed:', {
-      selectedDateStr,
-      selectedDate: selectedDate.toDateString(),
-      isToday
-    });
+
   }, [selectedDateStr, selectedDate, isToday]);
 
   // Queries for register info and employee status
   const registerId = id as Id<"registers">;
-  
+
   const registerArgs = registerId ? { id: registerId } : "skip";
   //@ts-ignore
   const register = useQuery(api.register.getRegister, registerArgs);
@@ -110,7 +106,7 @@ function RegisterDetail() {
   // Simple check: only use register log if it exists (backend will handle date logic)
   const selectedRegister = selectedRegisterLog;
 
-  
+
   // Mutations
   const createEmployee = useMutation(api.mutations.createEmployee);
   const startRegister = useMutation(api.mutations.startRegister);
@@ -198,7 +194,7 @@ function RegisterDetail() {
     return { hours: hours.toString(), minutes: minutes.toString() };
   };
 
-  
+
   const formatTimeFromTimestamp = (timestamp: number): string => {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -226,7 +222,7 @@ function RegisterDetail() {
     }
   };
 
-  
+
   const calculateLateness = (presentTime: number, shopOpenTime: number): number => {
     return Math.max(0, presentTime - shopOpenTime);
   };
@@ -498,7 +494,7 @@ function RegisterDetail() {
             name: formData.name.trim(),
             pin: formData.pin,
           });
-          
+
           if (result && result.email) {
             toast.success('Manager account created!', {
               description: (
@@ -511,7 +507,7 @@ function RegisterDetail() {
               duration: 10000, // Show for 10 seconds
             });
           }
-          
+
           console.log(`Manager auth account created for ${formData.name.trim()}`);
         } catch (authError: any) {
           console.error('Failed to create manager auth account:', authError);
@@ -564,13 +560,13 @@ function RegisterDetail() {
           <div className="flex items-center gap-3 sm:gap-4">
             <Button variant="ghost" className='hover:bg-primary rounded-b-md bg-accent p-2 sm:p-3' asChild>
               <Link to="/registers">
-                <ArrowLeft className="font-semibold" size={32}  strokeWidth={3}/>
+                <ArrowLeft className="font-semibold" size={32} strokeWidth={3} />
               </Link>
             </Button>
             <div>
               <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
                 <Store className="w-6 h-6 sm:w-8 sm:h-8" />
-                {register?.name || 'Store'} 
+                {register?.name || 'Store'}
               </h1>
 
 
@@ -587,37 +583,37 @@ function RegisterDetail() {
               Add Employee
             </Button>
           )}
-      <EmployeeDialog
-        isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
-        onSubmit={handleCreateEmployee}
-        title="Add New Employee"
-        formData={formData}
-        onInputChange={handleInputChange}
-        loading={loading}
-        error={error}
-        submitText="Add Employee"
-      />
+          <EmployeeDialog
+            isOpen={isCreateDialogOpen}
+            onClose={() => setIsCreateDialogOpen(false)}
+            onSubmit={handleCreateEmployee}
+            title="Add New Employee"
+            formData={formData}
+            onInputChange={handleInputChange}
+            loading={loading}
+            error={error}
+            submitText="Add Employee"
+          />
 
-        {/* Edit Employee Dialog */}
-      <EmployeeDialog
-        isOpen={isEditDialogOpen}
-        onClose={() => {
-          setIsEditDialogOpen(false);
-          setEditingEmployee(null);
-          setError('');
-        }}
-        onSubmit={handleUpdateEmployee}
-        title="Edit Employee"
-        formData={editFormData}
-        onInputChange={handleEditInputChange}
-        loading={loading}
-        error={error}
-        submitText="Update Employee"
-      />
-    </div>
+          {/* Edit Employee Dialog */}
+          <EmployeeDialog
+            isOpen={isEditDialogOpen}
+            onClose={() => {
+              setIsEditDialogOpen(false);
+              setEditingEmployee(null);
+              setError('');
+            }}
+            onSubmit={handleUpdateEmployee}
+            title="Edit Employee"
+            formData={editFormData}
+            onInputChange={handleEditInputChange}
+            loading={loading}
+            error={error}
+            submitText="Update Employee"
+          />
+        </div>
 
-    <Separator />
+        <Separator />
 
         {/* Register Status - Only show when register is started */}
         {selectedRegister && (
@@ -627,7 +623,7 @@ function RegisterDetail() {
                 <Clock className="w-4 h-4" />
                 Opened at {formatTimeFromTimestamp(selectedRegister.timestamp)}
               </Badge>
-              
+
               {/* Date Filter - Moved from header */}
               <div className="flex items-center gap-2">
                 <Popover>
@@ -669,7 +665,7 @@ function RegisterDetail() {
           </div>
         )}
 
-    <Separator />
+        <Separator />
 
         {/* Employee Filters and Search */}
         {selectedRegister && (
@@ -748,8 +744,8 @@ function RegisterDetail() {
         </div>
       ) : (
         <>
- 
-      
+
+
 
           {/* No employees case */}
           {filteredEmployees.length === 0 ? (
@@ -794,17 +790,17 @@ function RegisterDetail() {
         </>
       )}
 
-        {/* Log Drawer */}
-        <LogDrawer
-          isOpen={isLogDrawerOpen}
-          onClose={() => setIsLogDrawerOpen(false)}
-          employeeName={viewingEmployee?.name || ''}
-          logs={employeeLogs || null}
-          formatTimeWithAMPM={formatTimeWithAMPM}
-          formatDate={formatDate}
-          formatBreakDuration={formatBreakDuration}
-          calculateLateness={calculateLateness}
-        />
+      {/* Log Drawer */}
+      <LogDrawer
+        isOpen={isLogDrawerOpen}
+        onClose={() => setIsLogDrawerOpen(false)}
+        employeeName={viewingEmployee?.name || ''}
+        logs={employeeLogs || null}
+        formatTimeWithAMPM={formatTimeWithAMPM}
+        formatDate={formatDate}
+        formatBreakDuration={formatBreakDuration}
+        calculateLateness={calculateLateness}
+      />
     </div>
   );
 }
