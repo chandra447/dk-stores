@@ -33,6 +33,7 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
 
   // Query to find manager account by name
+  //@ts-ignore
   const findManagerAccount = useQuery(api.auth.users.findManagerAccountByName,
     formData.role === 'manager' && formData.identifier.trim() ? { name: formData.identifier.trim() } : 'skip'
   );
@@ -68,7 +69,7 @@ function Login() {
     if (formData.role === 'manager') {
       // For managers, find their account using the query
       if (findManagerAccount) {
-        email = findManagerAccount.email;
+        email = findManagerAccount.email || '';
         password = formData.pin;
       } else {
         // If manager account is not found, show appropriate error
@@ -133,179 +134,179 @@ function Login() {
         topOffset={0}
       />
       <div className="relative z-10 min-h-screen flex items-center justify-center">
-        <div className="w-full max-w-md px-4 flex flex-col items-center max-h-screen">
-        {/* Logo and Brand */}
-        <div className="text-center mb-4">
-          <div className="flex justify-center mb-3">
-            <img
-              src="/logo_transparent.png"
-              alt="DK Store Logo"
-              className="w-16 h-16 object-contain"
-            />
+        <div className="w-full max-w-md px-4 flex flex-col items-center max-h-screen -mt-18">
+          {/* Logo and Brand */}
+          <div className="text-center mb-4">
+            <div className="flex justify-center mb-3">
+              <img
+                src="/logo_transparent.png"
+                alt="DK Store Logo"
+                className="w-16 h-16 object-contain"
+              />
+            </div>
+            <h1 className="text-2xl font-semibold text-foreground mb-2">Welcome to DK Stores</h1>
+            <p className="text-muted-foreground">Sign in to your account to continue</p>
           </div>
-          <h1 className="text-2xl font-semibold text-foreground mb-2">Welcome to DK Stores</h1>
-          <p className="text-muted-foreground">Sign in to your account to continue</p>
-        </div>
 
-        {/* Main container - ensures no overflow */}
-        <div className="w-full">
-          {/* Tabs - Outside the card */}
-          <Tabs value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value as 'manager' | 'admin' }))}>
-            <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50 p-1 mb-3">
-              <TabsTrigger
-                value="admin"
-                className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
-              >
-                Admin
-              </TabsTrigger>
-              <TabsTrigger
-                value="manager"
-                className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
-              >
-                Manager
-              </TabsTrigger>
-            </TabsList>
+          {/* Main container - ensures no overflow */}
+          <div className="w-full">
+            {/* Tabs - Outside the card */}
+            <Tabs value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value as 'manager' | 'admin' }))}>
+              <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50 p-1 mb-3">
+                <TabsTrigger
+                  value="admin"
+                  className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
+                >
+                  Admin
+                </TabsTrigger>
+                <TabsTrigger
+                  value="manager"
+                  className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
+                >
+                  Manager
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Card that changes content based on selected tab */}
-            <Card className="w-full rounded-2xl shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm transition-all duration-300">
-            <TabsContent value="admin" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="email">Email Address</FieldLabel>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={formData.identifier}
-                      onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
-                      required
-                      className="h-11 border-border/60 focus:border-primary"
-                    />
-                  </Field>
+              {/* Card that changes content based on selected tab */}
+              <Card className="w-full rounded-2xl shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm transition-all duration-300">
+                <TabsContent value="admin" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
+                  <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="email">Email Address</FieldLabel>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="Enter your email"
+                          value={formData.identifier}
+                          onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
+                          required
+                          className="h-11 border-border/60 focus:border-primary"
+                        />
+                      </Field>
 
-                  <Field>
-                    <FieldLabel htmlFor="password">Password</FieldLabel>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Enter your password"
-                        value={formData.password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                        required
-                        className="h-11 pr-10 border-border/60 focus:border-primary"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <Field>
+                        <FieldLabel htmlFor="password">Password</FieldLabel>
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Enter your password"
+                            value={formData.password}
+                            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                            required
+                            className="h-11 pr-10 border-border/60 focus:border-primary"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </Field>
+                    </FieldGroup>
+
+                    <div className="flex items-center justify-between">
+                      <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground px-0">
+                        Forgot Password?
                       </Button>
                     </div>
-                  </Field>
-                </FieldGroup>
 
-                <div className="flex items-center justify-between">
-                  <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground px-0">
-                    Forgot Password?
-                  </Button>
-                </div>
+                    {error && (
+                      <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
+                        {error}
+                      </div>
+                    )}
 
-                {error && (
-                  <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
-                    {error}
-                  </div>
-                )}
+                    <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
+                      {loading ? 'Signing in...' : 'Sign In'}
+                    </Button>
 
-                <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
-                  {loading ? 'Signing in...' : 'Sign In'}
-                </Button>
-
-                <div className="text-center pt-2">
-                  <span className="text-muted-foreground text-sm">
-                    Don't have an account?{' '}
-                  </span>
-                  <Link
-                    to="/signup"
-                    className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
-                  >
-                    Sign up
-                  </Link>
-                </div>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="manager" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="username">Username (Full Name)</FieldLabel>
-                    <Input
-                      id="username"
-                      type="text"
-                      placeholder="Enter your full name"
-                      value={formData.identifier}
-                      onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
-                      required
-                      className="h-11 border-border/60 focus:border-primary"
-                    />
-                  </Field>
-
-                  <Field>
-                    <FieldLabel htmlFor="pin">Enter your 4-digit PIN</FieldLabel>
-                    <div className="mt-2">
-                      <InputOTP
-                        id="pin"
-                        maxLength={4}
-                        value={formData.pin}
-                        onChange={(value) => handlePinChange(value)}
-                        pattern={REGEXP_ONLY_DIGITS}
+                    <div className="text-center pt-2">
+                      <span className="text-muted-foreground text-sm">
+                        Don't have an account?{' '}
+                      </span>
+                      <Link
+                        to="/signup"
+                        className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
                       >
-                        <InputOTPGroup>
-                          <InputOTPSlot index={0} />
-                          <InputOTPSlot index={1} />
-                          <InputOTPSlot index={2} />
-                          <InputOTPSlot index={3} />
-                        </InputOTPGroup>
-                      </InputOTP>
+                        Sign up
+                      </Link>
                     </div>
-                    <FieldDescription className="mt-2">
-                      Enter your full name as registered by your admin and your 4-digit PIN
-                    </FieldDescription>
-                  </Field>
-                </FieldGroup>
+                  </form>
+                </TabsContent>
 
-                {error && (
-                  <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
-                    {error}
-                  </div>
-                )}
+                <TabsContent value="manager" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
+                  <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="username">Username (Full Name)</FieldLabel>
+                        <Input
+                          id="username"
+                          type="text"
+                          placeholder="Enter your full name"
+                          value={formData.identifier}
+                          onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
+                          required
+                          className="h-11 border-border/60 focus:border-primary"
+                        />
+                      </Field>
 
-                <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
-                  {loading ? 'Signing in...' : 'Sign In'}
-                </Button>
+                      <Field>
+                        <FieldLabel htmlFor="pin">Enter your 4-digit PIN</FieldLabel>
+                        <div className="mt-2">
+                          <InputOTP
+                            id="pin"
+                            maxLength={4}
+                            value={formData.pin}
+                            onChange={(value) => handlePinChange(value)}
+                            pattern={REGEXP_ONLY_DIGITS}
+                          >
+                            <InputOTPGroup>
+                              <InputOTPSlot index={0} />
+                              <InputOTPSlot index={1} />
+                              <InputOTPSlot index={2} />
+                              <InputOTPSlot index={3} />
+                            </InputOTPGroup>
+                          </InputOTP>
+                        </div>
+                        <FieldDescription className="mt-2">
+                          Enter your full name as registered by your admin and your 4-digit PIN
+                        </FieldDescription>
+                      </Field>
+                    </FieldGroup>
 
-                <div className="text-center pt-2">
-                  <span className="text-muted-foreground text-sm">
-                    Don't have an account?{' '}
-                  </span>
-                  <Link
-                    to="/signup"
-                    className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
-                  >
-                    Sign up
-                  </Link>
-                </div>
-              </form>
-            </TabsContent>
-          </Card>
-        </Tabs>
+                    {error && (
+                      <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
+                        {error}
+                      </div>
+                    )}
+
+                    <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
+                      {loading ? 'Signing in...' : 'Sign In'}
+                    </Button>
+
+                    <div className="text-center pt-2">
+                      <span className="text-muted-foreground text-sm">
+                        Don't have an account?{' '}
+                      </span>
+                      <Link
+                        to="/signup"
+                        className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
+                      >
+                        Sign up
+                      </Link>
+                    </div>
+                  </form>
+                </TabsContent>
+              </Card>
+            </Tabs>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
