@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { REGEXP_ONLY_DIGITS } from 'input-otp';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react'; // Added AlertCircle
+import { Eye, EyeOff } from 'lucide-react';
 import AnimatedGradientBackground from '@/components/ui/animated-gradient-background';
+import { toast } from 'sonner';
 
 interface FormData {
   identifier: string;
@@ -21,14 +22,23 @@ interface FormData {
 }
 
 // --- HELPER FOR ERROR HANDLING ---
-const getFriendlyErrorMessage = (error: any) => {
-  const message = error?.message || error?.toString() || '';
+const getFriendlyErrorMessage = (error: any, isAdmin: boolean = false) => {
+  const message = error?.message || error?.data || error?.toString() || '';
+  
+  // Handle ConvexError messages directly (they come from our custom provider)
+  if (message.includes('Account not found') || message.includes('sign up first')) {
+    return isAdmin
+      ? "Account not found. Please sign up first or check your email address."
+      : "Account not found. Please check your credentials.";
+  }
   
   // Map technical errors to user-friendly strings
-  if (message.includes('InvalidAccountId') || message.includes('User not found')) {
-    return "We couldn't find an account with those details.";
+  if (message.includes('InvalidAccountId') || message.includes('User not found') || message.includes('Could not verify')) {
+    return isAdmin
+      ? "Account not found. Please sign up first or check your email address."
+      : "We couldn't find an account with those details.";
   }
-  if (message.includes('InvalidPassword') || message.includes('password')) {
+  if (message.includes('InvalidPassword') || message.includes('InvalidSecret') || message.includes('password')) {
     return "Incorrect password. Please try again.";
   }
   if (message.includes('Network') || message.includes('fetch')) {
@@ -48,7 +58,6 @@ function Login() {
     pin: ''
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Query to find manager account by name
@@ -60,23 +69,22 @@ function Login() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     // Validation
     if (formData.role === 'admin') {
       if (!formData.identifier.trim() || !formData.password.trim()) {
-        setError('Email and password are required');
+        toast.error('Email and password are required', { dismissible: true });
         setLoading(false);
         return;
       }
     } else if (formData.role === 'manager') {
       if (!formData.identifier.trim() || !formData.pin.trim()) {
-        setError('Username and PIN are required');
+        toast.error('Username and PIN are required', { dismissible: true });
         setLoading(false);
         return;
       }
       if (formData.pin.length !== 4) {
-        setError('PIN must be exactly 4 digits');
+        toast.error('PIN must be exactly 4 digits', { dismissible: true });
         setLoading(false);
         return;
       }
@@ -90,7 +98,7 @@ function Login() {
         email = findManagerAccount.email || '';
         password = formData.pin;
       } else {
-        setError('Manager account not found. Please check your name or contact Admin.');
+        toast.error('Manager account not found. Please check your name or contact Admin.', { dismissible: true });
         setLoading(false);
         return;
       }
@@ -114,20 +122,8 @@ function Login() {
 
     } catch (err: any) {
       console.error('Sign in error:', err);
-
-      // Auto-signup logic for Admin (kept from your original code)
-      if (formData.role === 'admin' && err.message?.includes('InvalidAccountId')) {
-        try {
-          await signIn('password', { email, password, flow: 'signUp' });
-          setTimeout(() => navigate('/dashboard', { replace: true }), 100);
-          return; 
-        } catch (signupErr: any) {
-          setError(getFriendlyErrorMessage(signupErr));
-        }
-      } else {
-        // USE THE NEW HELPER HERE
-        setError(getFriendlyErrorMessage(err));
-      }
+      // Show appropriate error message as toast - no auto-signup, user must explicitly sign up
+      toast.error(getFriendlyErrorMessage(err, formData.role === 'admin'), { dismissible: true });
     } finally {
       setLoading(false);
     }
@@ -230,14 +226,6 @@ function Login() {
                     </Button>
                   </div>
 
-                  {/* Enhanced Error Display */}
-                  {error && (
-                    <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20 animate-in fade-in slide-in-from-top-1">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-
                   <Button type="submit" className="w-full h-10 sm:h-11 font-medium" disabled={loading}>
                     {loading ? 'Signing in...' : 'Sign In'}
                   </Button>
@@ -289,13 +277,6 @@ function Login() {
                       </div>
                     </Field>
                   </FieldGroup>
-
-                  {error && (
-                    <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20 animate-in fade-in slide-in-from-top-1">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                  )}
 
                   <Button type="submit" className="w-full h-10 sm:h-11 font-medium" disabled={loading}>
                     {loading ? 'Signing in...' : 'Sign In'}
