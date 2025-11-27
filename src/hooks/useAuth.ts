@@ -33,28 +33,27 @@ export function useAuth(): AuthState {
 
   let currentUser: User | null = null;
 
-  // Use database user profile instead of JWT parsing
-  if (isAuthenticated && userProfile) {
-    currentUser = {
-      name: userProfile.email?.split("@")[0] || 'Unknown User',
-      email: userProfile.email || 'unknown@example.com',
-      role: userProfile.role as 'admin' | 'manager' || 'admin'
-    };
-
-  } else if (isAuthenticated && !userProfile) {
-    // Loading state - authenticated but profile not loaded yet
-    return {
-      isAuthenticated,
-      isLoading: true,
-      user: null,
-      isAdmin: false,
-      isManager: false,
-    };
+  // Use database user profile when available, otherwise create temporary user
+  if (isAuthenticated) {
+    if (userProfile) {
+      currentUser = {
+        name: userProfile.email?.split("@")[0] || 'Unknown User',
+        email: userProfile.email || 'unknown@example.com',
+        role: userProfile.role as 'admin' | 'manager' || 'admin'
+      };
+    } else {
+      // Profile still loading - create temporary user to prevent blocking
+      currentUser = {
+        name: 'Loading User...',
+        email: 'loading@example.com',
+        role: 'admin' // Default role, will be updated when profile loads
+      };
+    }
   }
 
   return {
     isAuthenticated,
-    isLoading: false, // userProfile will be undefined while loading
+    isLoading: false, // Never block navigation due to profile loading
     user: currentUser,
     isAdmin: currentUser?.role === 'admin',
     isManager: currentUser?.role === 'manager',

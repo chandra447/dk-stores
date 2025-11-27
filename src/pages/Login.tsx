@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthActions } from '../hooks/useAuth';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -22,6 +22,7 @@ interface FormData {
 
 function Login() {
   const { signIn } = useAuthActions();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<FormData>({
     identifier: '',
     password: '',
@@ -89,8 +90,16 @@ function Login() {
 
       console.log('Sign in result:', result);
 
-      // If authentication is successful, the router will handle the redirect
-      // based on the updated authentication state in useAuth
+      // Explicit navigation after successful sign in
+      // Use a small delay to ensure auth state is updated
+      setTimeout(() => {
+        if (formData.role === 'admin') {
+          navigate('/dashboard', { replace: true });
+        } else {
+          navigate('/registers', { replace: true });
+        }
+      }, 100);
+
     } catch (err: any) {
       console.error('Sign in error:', err);
 
@@ -104,6 +113,11 @@ function Login() {
             flow: 'signUp',
           });
           console.log('Admin account created successfully');
+
+          // Navigate after successful account creation
+          setTimeout(() => {
+            navigate('/dashboard', { replace: true });
+          }, 100);
         } catch (signupErr: any) {
           console.error('Sign up error:', signupErr);
           setError(signupErr.message || 'Failed to create admin account');

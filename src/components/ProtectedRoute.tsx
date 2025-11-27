@@ -10,6 +10,8 @@ interface ProtectedRouteProps {
 function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Only show loading spinner for very brief initial authentication state
+  // Don't block navigation for authenticated users with loading profiles
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
