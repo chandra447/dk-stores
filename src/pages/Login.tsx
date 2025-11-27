@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { REGEXP_ONLY_DIGITS } from 'input-otp';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react'; // Added AlertCircle
 import AnimatedGradientBackground from '@/components/ui/animated-gradient-background';
 
 interface FormData {
@@ -19,6 +19,24 @@ interface FormData {
   role: 'manager' | 'admin';
   pin: string;
 }
+
+// --- HELPER FOR ERROR HANDLING ---
+const getFriendlyErrorMessage = (error: any) => {
+  const message = error?.message || error?.toString() || '';
+  
+  // Map technical errors to user-friendly strings
+  if (message.includes('InvalidAccountId') || message.includes('User not found')) {
+    return "We couldn't find an account with those details.";
+  }
+  if (message.includes('InvalidPassword') || message.includes('password')) {
+    return "Incorrect password. Please try again.";
+  }
+  if (message.includes('Network') || message.includes('fetch')) {
+    return "Network error. Please check your internet connection.";
+  }
+  // Generic fallback
+  return "Login failed. Please check your credentials.";
+};
 
 function Login() {
   const { signIn } = useAuthActions();
@@ -68,30 +86,24 @@ function Login() {
     let password = formData.password;
 
     if (formData.role === 'manager') {
-      // For managers, find their account using the query
       if (findManagerAccount) {
         email = findManagerAccount.email || '';
         password = formData.pin;
       } else {
-        // If manager account is not found, show appropriate error
-        setError('Manager account not found. Please check your name or contact your admin.');
+        setError('Manager account not found. Please check your name or contact Admin.');
         setLoading(false);
         return;
       }
     }
 
     try {
-      // First try to sign in
-      const result = await signIn('password', {
+      await signIn('password', {
         email,
         password,
         flow: 'signIn',
       });
 
-      console.log('Sign in result:', result);
-
-      // Explicit navigation after successful sign in
-      // Use a small delay to ensure auth state is updated
+      // Successful login navigation
       setTimeout(() => {
         if (formData.role === 'admin') {
           navigate('/dashboard', { replace: true });
@@ -103,29 +115,18 @@ function Login() {
     } catch (err: any) {
       console.error('Sign in error:', err);
 
-      // If user doesn't exist, try to create them first (for admin users)
+      // Auto-signup logic for Admin (kept from your original code)
       if (formData.role === 'admin' && err.message?.includes('InvalidAccountId')) {
-        console.log('Admin user not found, attempting to create account...');
         try {
-          await signIn('password', {
-            email,
-            password,
-            flow: 'signUp',
-          });
-          console.log('Admin account created successfully');
-
-          // Navigate after successful account creation
-          setTimeout(() => {
-            navigate('/dashboard', { replace: true });
-          }, 100);
+          await signIn('password', { email, password, flow: 'signUp' });
+          setTimeout(() => navigate('/dashboard', { replace: true }), 100);
+          return; 
         } catch (signupErr: any) {
-          console.error('Sign up error:', signupErr);
-          setError(signupErr.message || 'Failed to create admin account');
+          setError(getFriendlyErrorMessage(signupErr));
         }
-      } else if (formData.role === 'manager') {
-        setError(`Login failed. Please check your name and PIN. If you continue to have issues, contact your admin. ${findManagerAccount ? `(Found account: ${findManagerAccount.email})` : ''}`);
       } else {
-        setError(err.message || 'Login failed. Please contact your admin to create your manager account.');
+        // USE THE NEW HELPER HERE
+        setError(getFriendlyErrorMessage(err));
       }
     } finally {
       setLoading(false);
@@ -137,7 +138,8 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+    // CHANGED: min-h-svh (better for mobile browsers) and overflow-y-auto for safety
+    <div className="min-h-[100svh] w-full bg-slate-100 dark:bg-slate-900 relative overflow-y-auto flex flex-col">
       <AnimatedGradientBackground
         startingGap={125}
         Breathing={true}
@@ -147,179 +149,161 @@ function Login() {
         breathingRange={5}
         topOffset={0}
       />
-      <div className="relative z-10 min-h-screen flex items-center justify-center">
-        <div className="w-full max-w-md px-4 flex flex-col items-center max-h-screen -mt-18">
-          {/* Logo and Brand */}
-          <div className="text-center mb-4">
-            <div className="flex justify-center mb-3">
-              <img
-                src="/logo_transparent.png"
-                alt="DK Store Logo"
-                className="w-16 h-16 object-contain"
-              />
-            </div>
-            <h1 className="text-2xl font-semibold text-foreground mb-2">Welcome to DK Stores</h1>
-            <p className="text-muted-foreground">Sign in to your account to continue</p>
+      
+      {/* CHANGED: 
+          1. py-4: Small padding top/bottom
+          2. my-auto: Centers content vertically if screen is big, allows scroll if screen is small
+          3. z-10: Kept z-index
+      */}
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 py-6 my-auto flex flex-col items-center">
+        
+        {/* CHANGED: Compact Header */}
+        <div className="text-center mb-4 sm:mb-6">
+          <div className="flex justify-center mb-2 sm:mb-3">
+            <img
+              src="/logo_transparent.png"
+              alt="DK Store Logo"
+              // Smaller logo on mobile (w-12) vs desktop (w-16)
+              className="w-12 h-12 sm:w-16 sm:h-16 object-contain"
+            />
           </div>
+          {/* Smaller text on mobile */}
+          <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-1">Welcome to DK Stores</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Sign in to your account to continue</p>
+        </div>
 
-          {/* Main container - ensures no overflow */}
-          <div className="w-full">
-            {/* Tabs - Outside the card */}
-            <Tabs value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value as 'manager' | 'admin' }))}>
-              <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50 p-1 mb-3">
-                <TabsTrigger
-                  value="admin"
-                  className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
-                >
-                  Admin
-                </TabsTrigger>
-                <TabsTrigger
-                  value="manager"
-                  className="data-[state=active]:bg-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-accent transition-all duration-400"
-                >
-                  Manager
-                </TabsTrigger>
-              </TabsList>
+        <div className="w-full">
+          <Tabs value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value as 'manager' | 'admin' }))}>
+            {/* Reduced mb-3 to mb-2 */}
+            <TabsList className="grid w-full grid-cols-2 h-10 sm:h-12 bg-muted/50 p-1 mb-2">
+              <TabsTrigger value="admin" className="text-sm">Admin</TabsTrigger>
+              <TabsTrigger value="manager" className="text-sm">Manager</TabsTrigger>
+            </TabsList>
 
-              {/* Card that changes content based on selected tab */}
-              <Card className="w-full rounded-2xl shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm transition-all duration-300">
-                <TabsContent value="admin" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-                  <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <FieldGroup>
-                      <Field>
-                        <FieldLabel htmlFor="email">Email Address</FieldLabel>
+            <Card className="w-full rounded-2xl shadow-xl border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+              <TabsContent value="admin" className="mt-0">
+                {/* CHANGED: Reduced padding from p-6 to p-4 on mobile */}
+                <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+                  <FieldGroup className="space-y-3">
+                    <Field>
+                      <FieldLabel htmlFor="email" className="text-xs sm:text-sm">Email Address</FieldLabel>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="name@example.com"
+                        value={formData.identifier}
+                        onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
+                        required
+                        className="h-10 sm:h-11 border-border/60 focus:border-primary"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="password" className="text-xs sm:text-sm">Password</FieldLabel>
+                      <div className="relative">
                         <Input
-                          id="email"
-                          type="email"
-                          placeholder="Enter your email"
-                          value={formData.identifier}
-                          onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Enter password"
+                          value={formData.password}
+                          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                           required
-                          className="h-11 border-border/60 focus:border-primary"
+                          className="h-10 sm:h-11 pr-10 border-border/60 focus:border-primary"
                         />
-                      </Field>
-
-                      <Field>
-                        <FieldLabel htmlFor="password">Password</FieldLabel>
-                        <div className="relative">
-                          <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Enter your password"
-                            value={formData.password}
-                            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                            required
-                            className="h-11 pr-10 border-border/60 focus:border-primary"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                      </Field>
-                    </FieldGroup>
-
-                    <div className="flex items-center justify-between">
-                      <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground px-0">
-                        Forgot Password?
-                      </Button>
-                    </div>
-
-                    {error && (
-                      <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
-                        {error}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </div>
-                    )}
+                    </Field>
+                  </FieldGroup>
 
-                    <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
-                      {loading ? 'Signing in...' : 'Sign In'}
+                  {/* Cleaned up "Forgot Password" to be less dominant */}
+                  <div className="flex justify-end">
+                    <Button type="button" variant="link" size="sm" className="text-muted-foreground hover:text-foreground h-auto p-0 text-xs">
+                      Forgot Password?
                     </Button>
+                  </div>
 
-                    <div className="text-center pt-2">
-                      <span className="text-muted-foreground text-sm">
-                        Don't have an account?{' '}
-                      </span>
-                      <Link
-                        to="/signup"
-                        className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
-                      >
-                        Sign up
-                      </Link>
+                  {/* Enhanced Error Display */}
+                  {error && (
+                    <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20 animate-in fade-in slide-in-from-top-1">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{error}</span>
                     </div>
-                  </form>
-                </TabsContent>
+                  )}
 
-                <TabsContent value="manager" className="mt-0 data-[state=active]:animate-in data-[state=inactive]:animate-out data-[state=inactive]:fade-out data-[state=active]:fade-in duration-500">
-                  <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <FieldGroup>
-                      <Field>
-                        <FieldLabel htmlFor="username">Username (Full Name)</FieldLabel>
-                        <Input
-                          id="username"
-                          type="text"
-                          placeholder="Enter your full name"
-                          value={formData.identifier}
-                          onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
-                          required
-                          className="h-11 border-border/60 focus:border-primary"
-                        />
-                      </Field>
+                  <Button type="submit" className="w-full h-10 sm:h-11 font-medium" disabled={loading}>
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </Button>
 
-                      <Field>
-                        <FieldLabel htmlFor="pin">Enter your 4-digit PIN</FieldLabel>
-                        <div className="mt-2">
-                          <InputOTP
-                            id="pin"
-                            maxLength={4}
-                            value={formData.pin}
-                            onChange={(value) => handlePinChange(value)}
-                            pattern={REGEXP_ONLY_DIGITS}
-                          >
-                            <InputOTPGroup>
-                              <InputOTPSlot index={0} />
-                              <InputOTPSlot index={1} />
-                              <InputOTPSlot index={2} />
-                              <InputOTPSlot index={3} />
-                            </InputOTPGroup>
-                          </InputOTP>
-                        </div>
-                        <FieldDescription className="mt-2">
-                          Enter your full name as registered by your admin and your 4-digit PIN
-                        </FieldDescription>
-                      </Field>
-                    </FieldGroup>
+                  <div className="text-center pt-1 sm:pt-2">
+                    <span className="text-muted-foreground text-xs sm:text-sm">
+                      Don't have an account?{' '}
+                    </span>
+                    <Link to="/signup" className="text-primary hover:text-primary/80 font-medium text-xs sm:text-sm">
+                      Sign up
+                    </Link>
+                  </div>
+                </form>
+              </TabsContent>
 
-                    {error && (
-                      <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
-                        {error}
+              <TabsContent value="manager" className="mt-0">
+                <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+                  <FieldGroup className="space-y-3">
+                    <Field>
+                      <FieldLabel htmlFor="username" className="text-xs sm:text-sm">Username (Full Name)</FieldLabel>
+                      <Input
+                        id="username"
+                        type="text"
+                        placeholder="Enter full name"
+                        value={formData.identifier}
+                        onChange={(e) => setFormData(prev => ({ ...prev, identifier: e.target.value }))}
+                        required
+                        className="h-10 sm:h-11 border-border/60 focus:border-primary"
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="pin" className="text-xs sm:text-sm">4-digit PIN</FieldLabel>
+                      <div className="mt-1.5 flex justify-center">
+                        <InputOTP
+                          id="pin"
+                          maxLength={4}
+                          value={formData.pin}
+                          onChange={(value) => handlePinChange(value)}
+                          pattern={REGEXP_ONLY_DIGITS}
+                        >
+                          <InputOTPGroup>
+                            <InputOTPSlot index={0} className="h-10 w-10 sm:h-12 sm:w-12" />
+                            <InputOTPSlot index={1} className="h-10 w-10 sm:h-12 sm:w-12" />
+                            <InputOTPSlot index={2} className="h-10 w-10 sm:h-12 sm:w-12" />
+                            <InputOTPSlot index={3} className="h-10 w-10 sm:h-12 sm:w-12" />
+                          </InputOTPGroup>
+                        </InputOTP>
                       </div>
-                    )}
+                    </Field>
+                  </FieldGroup>
 
-                    <Button type="submit" className="w-full h-11 font-medium" disabled={loading}>
-                      {loading ? 'Signing in...' : 'Sign In'}
-                    </Button>
-
-                    <div className="text-center pt-2">
-                      <span className="text-muted-foreground text-sm">
-                        Don't have an account?{' '}
-                      </span>
-                      <Link
-                        to="/signup"
-                        className="text-primary hover:text-primary/80 font-medium text-sm transition-colors"
-                      >
-                        Sign up
-                      </Link>
+                  {error && (
+                    <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20 animate-in fade-in slide-in-from-top-1">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{error}</span>
                     </div>
-                  </form>
-                </TabsContent>
-              </Card>
-            </Tabs>
-          </div>
+                  )}
+
+                  <Button type="submit" className="w-full h-10 sm:h-11 font-medium" disabled={loading}>
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Card>
+          </Tabs>
         </div>
       </div>
     </div>
