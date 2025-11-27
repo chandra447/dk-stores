@@ -47,7 +47,7 @@ export function EmployeeDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
     
@@ -65,7 +65,7 @@ export function EmployeeDialog({
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field>
               <FieldLabel htmlFor="startTime" className="flex items-center gap-2">
                 <Clock className="w-4 h-4" />
