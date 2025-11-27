@@ -1,8 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Home, Coffee, FileText, Edit3 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { MoreVertical, Home, Coffee, FileText, Edit3, Trash2 } from 'lucide-react';
 import { useMotionValue, useTransform, motion } from 'motion/react';
 import { useEffect } from 'react';
 import { Employee } from '../types/employee';
@@ -22,6 +22,7 @@ interface EmployeeCardProps {
   onEditEmployee: (employee: Employee) => void;
   onMarkHalfDay: (rollcallId: string) => void;
   onRemoveHalfDay: (rollcallId: string) => void;
+  onDeleteEmployee: (employee: Employee) => void;
   formatTimeWithAMPM: (timestamp: number) => string;
 }
 
@@ -92,6 +93,7 @@ export function EmployeeCard({
   onEditEmployee,
   onMarkHalfDay,
   onRemoveHalfDay,
+  onDeleteEmployee,
   formatTimeWithAMPM
 }: EmployeeCardProps) {
   return (
@@ -119,10 +121,20 @@ export function EmployeeCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {isAdmin && (
-                <DropdownMenuItem onClick={() => onEditEmployee(employee)}>
-                  <Edit3 className="w-4 h-4 mr-2" />
-                  Edit Employee
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onClick={() => onEditEmployee(employee)}>
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit Employee
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onDeleteEmployee(employee)}
+                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Employee
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
               )}
               <DropdownMenuItem onClick={() => onViewLogs(employee)}>
                 <FileText className="w-4 h-4 mr-2" />

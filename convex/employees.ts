@@ -383,6 +383,185 @@ export const updateEmployee = mutation({
   },
 });
 
+// Helper function to check if employee is currently active (present/working)
+export const getEmployeeActiveStatus = query({
+  args: {
+    employeeId: v.id("employees"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Get the employee
+    const employee = await ctx.db.get(args.employeeId);
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    // Verify register access
+    const hasAccess = await hasRegisterAccess(ctx, employee.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
+    }
+
+    // Get current date range (server's date)
+    const startOfDay = getStartOfDay();
+    const endOfDay = getEndOfDay();
+
+    // Find today's register log for the employee's register
+    const todayRegisterLog = await ctx.db.query("registerLogs")
+      .filter(q => q.eq(q.field("registerId"), employee.registerId))
+      .filter(q => q.gte(q.field("timestamp"), startOfDay))
+      .filter(q => q.lte(q.field("timestamp"), endOfDay))
+      .first();
+
+    if (!todayRegisterLog) {
+      return { isActive: false, status: "register_not_started" };
+    }
+
+    // Get today's rollcall for this employee
+    const rollcall = await ctx.db.query("employeeRollcall")
+      .filter(q => q.eq(q.field("employeeId"), args.employeeId))
+      .filter(q => q.eq(q.field("registerLogId"), todayRegisterLog._id))
+      .first();
+
+    if (!rollcall || !rollcall.presentTime) {
+      return { isActive: false, status: "not_marked" };
+    }
+
+    if (rollcall.absentTime) {
+      return { isActive: false, status: "absent" };
+    }
+
+    // Check for active break
+    const activeBreak = await ctx.db.query("attendanceLogs")
+      .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
+      .filter(q => q.eq(q.field("checkOutTime"), undefined))
+      .first();
+
+    if (activeBreak) {
+      return { isActive: true, status: "on_break" };
+    }
+
+    return { isActive: true, status: "working" };
+  },
+});
+
+// Delete an employee with cascading deletion (admin only)
+export const deleteEmployee = mutation({
+  args: {
+    employeeId: v.id("employees"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("You must be logged in to delete an employee");
+    }
+
+    // Verify current user is admin
+    const currentUser = await ctx.db.get(userId);
+    if (!currentUser || (currentUser as any).role === "manager") {
+      throw new Error("Only admins can delete employees");
+    }
+
+    // Get the employee to delete
+    const employee = await ctx.db.get(args.employeeId);
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    // Verify register access (admin should have access to all registers)
+    const hasAccess = await hasRegisterAccess(ctx, employee.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("You don't have permission to delete employees in this register");
+    }
+
+    // Check if employee is currently active (duplicate logic from getEmployeeActiveStatus query)
+    // Get current date range (server's date)
+    const startOfDay = getStartOfDay();
+    const endOfDay = getEndOfDay();
+
+    // Find today's register log for the employee's register
+    const todayRegisterLog = await ctx.db.query("registerLogs")
+      .filter(q => q.eq(q.field("registerId"), employee.registerId))
+      .filter(q => q.gte(q.field("timestamp"), startOfDay))
+      .filter(q => q.lte(q.field("timestamp"), endOfDay))
+      .first();
+
+    if (todayRegisterLog) {
+      // Get today's rollcall for this employee
+      const rollcall = await ctx.db.query("employeeRollcall")
+        .filter(q => q.eq(q.field("employeeId"), args.employeeId))
+        .filter(q => q.eq(q.field("registerLogId"), todayRegisterLog._id))
+        .first();
+
+      if (rollcall && rollcall.presentTime && !rollcall.absentTime) {
+        // Check for active break
+        const activeBreak = await ctx.db.query("attendanceLogs")
+          .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
+          .filter(q => q.eq(q.field("checkOutTime"), undefined))
+          .first();
+
+        if (activeBreak) {
+          throw new Error("Cannot delete employee while they are on break. Please wait until they are checked in.");
+        }
+
+        throw new Error("Cannot delete employee while they are working. Please wait until they are checked out.");
+      }
+    }
+
+    try {
+      // 1. Get all rollcall entries for this employee
+      const rollcallEntries = await ctx.db.query("employeeRollcall")
+        .filter(q => q.eq(q.field("employeeId"), args.employeeId))
+        .collect();
+
+      // 2. Delete all attendance logs for this employee (cascade through rollcall entries)
+      for (const rollcall of rollcallEntries) {
+        const attendanceLogs = await ctx.db.query("attendanceLogs")
+          .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
+          .collect();
+
+        for (const log of attendanceLogs) {
+          await ctx.db.delete(log._id);
+        }
+      }
+
+      // 3. Delete all rollcall entries for this employee
+      for (const rollcall of rollcallEntries) {
+        await ctx.db.delete(rollcall._id);
+      }
+
+      // 4. Delete auth account if this employee is a manager
+      if (employee.isManager && employee.userId) {
+        // Note: Convex Auth doesn't provide a direct way to delete auth accounts
+        // We'll delete the user record from our users table
+        // The actual auth session cleanup will be handled by the system
+        try {
+          await ctx.db.delete(employee.userId);
+        } catch (error) {
+          // Log error but continue with employee deletion
+          console.warn(`Warning: Could not delete auth account for employee ${employee.name}:`, error);
+        }
+      }
+
+      // 5. Finally delete the employee record
+      await ctx.db.delete(args.employeeId);
+
+      return {
+        success: true,
+        message: `Employee "${employee.name}" has been successfully deleted. All attendance records and related data have been removed.`
+      };
+
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      throw new Error(`Failed to delete employee: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  },
+});
+
 // Get employees by register (for dashboard filters)
 export const getEmployeesByRegister = query({
   args: {

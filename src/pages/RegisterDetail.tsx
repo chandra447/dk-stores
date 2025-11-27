@@ -15,6 +15,7 @@ import { ArrowLeft, Users, Plus, Clock, Store, Coffee, Home, CalendarIcon, Searc
 import { EmployeeCard } from '@/components/EmployeeCard';
 import { LogDrawer } from '@/components/LogDrawer';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
+import { DeleteEmployeeDialog } from '@/components/DeleteEmployeeDialog';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useQueryState } from 'nuqs';
@@ -118,6 +119,7 @@ function RegisterDetail() {
   const markHalfDay = useMutation(api.mutations.markHalfDay);
   const removeHalfDay = useMutation(api.mutations.removeHalfDay);
   const updateEmployee = useMutation(api.employees.updateEmployee);
+  const deleteEmployee = useMutation(api.employees.deleteEmployee);
   const createManagerAuthAccount = useAction(api.employees.createManagerAuthAccount);
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -125,10 +127,13 @@ function RegisterDetail() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState(false);
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<EmployeeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Employee logs query (declared after state to avoid hoisting issues)
   const employeeLogs = useQuery(api.attendance.getEmployeeAttendanceLogs,
@@ -333,6 +338,48 @@ function RegisterDetail() {
     } catch (err: any) {
       setError(err.message || 'Failed to remove half day');
     }
+  };
+
+  // Delete employee handler
+  const handleDeleteEmployee = (employee: Employee) => {
+    setDeletingEmployee(employee);
+    setIsDeleteDialogOpen(true);
+    setError('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingEmployee) return;
+
+    setIsDeleting(true);
+
+    try {
+      await deleteEmployee({ employeeId: deletingEmployee.id as any });
+
+      // Show success toast
+      toast.success('Employee deleted successfully', {
+        description: `${deletingEmployee.name} and all their attendance data have been permanently removed.`
+      });
+
+      // Close dialog and reset state
+      setIsDeleteDialogOpen(false);
+      setDeletingEmployee(null);
+    } catch (err: any) {
+      console.error('Delete employee error:', err);
+
+      // Show error toast
+      toast.error('Failed to delete employee', {
+        description: err.message || 'An error occurred while deleting the employee.'
+      });
+
+      setError(err.message || 'Failed to delete employee');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setIsDeleteDialogOpen(false);
+    setDeletingEmployee(null);
   };
 
   const handleViewLogs = (employee: Employee) => {
@@ -782,6 +829,7 @@ function RegisterDetail() {
                   onEditEmployee={handleEditEmployee}
                   onMarkHalfDay={handleMarkHalfDay}
                   onRemoveHalfDay={handleRemoveHalfDay}
+                  onDeleteEmployee={handleDeleteEmployee}
                   formatTimeWithAMPM={formatTimeWithAMPM}
                 />
               ))}
@@ -800,6 +848,15 @@ function RegisterDetail() {
         formatDate={formatDate}
         formatBreakDuration={formatBreakDuration}
         calculateLateness={calculateLateness}
+      />
+
+      {/* Delete Employee Dialog */}
+      <DeleteEmployeeDialog
+        employee={deletingEmployee}
+        isOpen={isDeleteDialogOpen}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        isDeleting={isDeleting}
       />
     </div>
   );
