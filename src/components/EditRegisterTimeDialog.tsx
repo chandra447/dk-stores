@@ -124,7 +124,7 @@ export function EditRegisterTimeDialog({
           {/* Time Input */}
           <div>
             <TimeInput
-              value={startTime}
+              value={startTime as any}
               onChange={handleTimeChange}
               label="Register Start Time"
               id="startTime"
