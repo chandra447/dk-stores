@@ -3,17 +3,50 @@ import { useAuthActions } from '@convex-dev/auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldGroup, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Store, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import AnimatedGradientBackground from '@/components/ui/animated-gradient-background';
+import { toast } from 'sonner';
 
 interface FormData {
   email: string;
   password: string;
   confirmPassword: string;
 }
+
+// --- HELPER FOR ERROR HANDLING ---
+const getFriendlyErrorMessage = (error: any) => {
+  const message = error?.message || error?.data || error?.toString() || '';
+  
+  // Handle account already exists errors
+  if (message.includes('already exists') || message.includes('duplicate') || message.includes('AccountAlreadyExists')) {
+    return "An account with this email already exists. Please sign in instead.";
+  }
+  
+  // Handle invalid email format
+  if (message.includes('invalid email') || message.includes('email format')) {
+    return "Please enter a valid email address.";
+  }
+  
+  // Handle weak password errors
+  if (message.includes('weak password') || message.includes('password requirements')) {
+    return "Password is too weak. Please use at least 6 characters with a mix of letters and numbers.";
+  }
+  
+  // Handle network errors
+  if (message.includes('Network') || message.includes('fetch') || message.includes('connection')) {
+    return "Network error. Please check your internet connection.";
+  }
+  
+  // Handle rate limiting
+  if (message.includes('rate limit') || message.includes('too many')) {
+    return "Too many attempts. Please wait a moment and try again.";
+  }
+  
+  // Generic fallback
+  return "Registration failed. Please try again.";
+};
 
 function Signup() {
   const navigate = useNavigate();
@@ -26,29 +59,28 @@ function Signup() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const validateForm = (): boolean => {
     if (!formData.email || !formData.password) {
-      setError('Email and password are required');
+      toast.error('Email and password are required', { dismissible: true });
       return false;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      toast.error('Passwords do not match', { dismissible: true });
       return false;
     }
 
     if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
+      toast.error('Password must be at least 6 characters long', { dismissible: true });
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setError('Please enter a valid email address');
+      toast.error('Please enter a valid email address', { dismissible: true });
       return false;
     }
 
@@ -57,7 +89,6 @@ function Signup() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
 
     if (!validateForm()) {
       return;
@@ -75,12 +106,14 @@ function Signup() {
       });
 
       setSuccess(true);
+      toast.success('Account created successfully!', { dismissible: true });
       // Redirect to login after successful signup
       setTimeout(() => {
         navigate('/login');
       }, 3000);
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Please try again.');
+      console.error('Sign up error:', err);
+      toast.error(getFriendlyErrorMessage(err), { dismissible: true });
     } finally {
       setLoading(false);
     }
@@ -88,7 +121,6 @@ function Signup() {
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    setError(''); // Clear error when user types
   };
 
   if (success) {
@@ -207,14 +239,6 @@ function Signup() {
                 )}
               </Field>
             </FieldGroup>
-
-            {error && (
-              <Alert className="mt-6 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-                <AlertDescription className="text-red-600 dark:text-red-400">
-                  {error}
-                </AlertDescription>
-              </Alert>
-            )}
 
             <div className="mt-8 flex flex-col gap-4">
               <Button

@@ -1,66 +1,57 @@
 import { Password } from "@convex-dev/auth/providers/Password";
-import { convexAuth, createAccount, retrieveAccount } from "@convex-dev/auth/server";
-import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
+import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import { DataModel } from "./_generated/dataModel";
 
 /**
- * Custom Password provider that separates sign-in and sign-up flows.
- * - signIn: Only works for existing accounts (throws error if account doesn't exist)
- * - signUp: Creates new accounts
+ * Password provider configuration.
+ *
+ * NOTE: Do NOT set `id` explicitly - the Password provider already uses "password"
+ * as its default ID. Setting it explicitly can break the crypto functions.
+ *
+ * The profile function extracts user data and the flow parameter, which we use
+ * in the createOrUpdateUser callback to differentiate sign-in from sign-up.
  */
-const CustomPassword = ConvexCredentials<DataModel>({
-  id: "password",
-  authorize: async (params, ctx) => {
-    const email = params.email as string;
-    const password = params.password as string;
-    const flow = params.flow as string;
-
-    if (!email || !password) {
-      throw new ConvexError("Email and password are required");
-    }
-
-    if (flow === "signUp") {
-      // Sign-up flow: Create a new account
-      try {
-        const { user } = await createAccount(ctx, {
-          provider: "password",
-          account: {
-            id: email,
-            secret: password,
-          },
-          profile: {
-            email: email,
-          },
-        });
-        return { userId: user._id };
-      } catch (error: any) {
-        // Account might already exist
-        if (error.message?.includes("already exists")) {
-          throw new ConvexError("An account with this email already exists. Please sign in instead.");
-        }
-        throw error;
-      }
-    } else {
-      // Sign-in flow: Only authenticate existing accounts
-      const result = await retrieveAccount(ctx, {
-        provider: "password",
-        account: {
-          id: email,
-          secret: password,
-        },
-      });
-
-      if (result === null) {
-        throw new ConvexError("Account not found. Please sign up first or check your credentials.");
-      }
-
-      const { user } = result;
-      return { userId: user._id };
-    }
+const CustomPasswordProvider = Password<DataModel>({
+  profile(params) {
+    return {
+      email: params.email as string,
+      name: params.name as string || (params.email as string).split("@")[0],
+      // Pass the flow parameter so we can access it in createOrUpdateUser callback
+      // This helps us reject sign-in attempts for non-existent accounts
+      _flow: params.flow as string | undefined,
+    };
   },
 });
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [CustomPassword],
+  providers: [CustomPasswordProvider],
+  callbacks: {
+    /**
+     * Control user creation - only allow if it's a signUp flow.
+     * When flow is "signIn" and user doesn't exist, reject the request.
+     */
+    async createOrUpdateUser(ctx, args) {
+      // If user already exists, return their ID (sign-in flow works)
+      if (args.existingUserId) {
+        return args.existingUserId;
+      }
+
+      // Access the flow from the profile (passed from frontend via _flow)
+      const profile = args.profile as { email?: string; name?: string; image?: string; _flow?: string };
+      const flow = profile?._flow;
+
+      // If it's explicitly a sign-in flow and user doesn't exist, reject
+      if (flow === "signIn") {
+        throw new ConvexError("Account not found. Please sign up first or check your credentials.");
+      }
+
+      // Sign-up flow: Create the user (don't store _flow in the database)
+      return ctx.db.insert("users", {
+        email: profile?.email,
+        name: profile?.name,
+        image: profile?.image,
+      });
+    },
+  },
 });
