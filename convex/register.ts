@@ -313,6 +313,58 @@ export const getTodayRegisterLog = query({
   },
 });
 
+// Update register start time for today's register log
+export const updateRegisterStartTime = mutation({
+  args: {
+    registerId: v.id("registers"),
+    newStartTime: v.number(), // Unix timestamp for the new start time
+    clientLocalStartOfDay: v.number(), // Client's local start of day in milliseconds
+    clientLocalEndOfDay: v.number(), // Client's local end of day in milliseconds
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("You must be logged in to update register start time");
+    }
+
+    // Verify the register exists and user has access
+    const register = await ctx.db.get(args.registerId);
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
+    }
+
+    // Validate that the new start time is not in the future
+    if (args.newStartTime > Date.now()) {
+      throw new Error("Cannot set start time in the future");
+    }
+
+    // Find today's register log
+    const registerLog = await ctx.db.query("registerLogs")
+      .filter(q => q.eq(q.field("registerId"), args.registerId))
+      .filter(q => q.gte(q.field("timestamp"), args.clientLocalStartOfDay))
+      .filter(q => q.lte(q.field("timestamp"), args.clientLocalEndOfDay))
+      .first();
+
+    if (!registerLog) {
+      throw new Error("No register log found for today. Please start the register first.");
+    }
+
+    // Update the register log timestamp
+    await ctx.db.patch(registerLog._id, {
+      timestamp: args.newStartTime,
+      updatedAt: Date.now(),
+    });
+
+    return registerLog._id;
+  },
+});
+
 // Get all registers accessible to the current user (for dashboard - admin/owner only)
 export const getAccessibleRegisters = query({
   args: {},

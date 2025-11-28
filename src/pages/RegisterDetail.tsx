@@ -16,6 +16,7 @@ import { EmployeeCard } from '@/components/EmployeeCard';
 import { LogDrawer } from '@/components/LogDrawer';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { DeleteEmployeeDialog } from '@/components/DeleteEmployeeDialog';
+import { EditRegisterTimeButton } from '@/components/EditRegisterTimeDialog';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useQueryState } from 'nuqs';
@@ -111,6 +112,7 @@ function RegisterDetail() {
   // Mutations
   const createEmployee = useMutation(api.mutations.createEmployee);
   const startRegister = useMutation(api.mutations.startRegister);
+  const updateRegisterStartTime = useMutation(api.register.updateRegisterStartTime);
   const markPresent = useMutation(api.mutations.markEmployeePresent);
   const markAbsent = useMutation(api.mutations.markEmployeeAbsent);
   const startBreak = useMutation(api.mutations.startEmployeeBreak);
@@ -666,10 +668,23 @@ function RegisterDetail() {
         {selectedRegister && (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant="secondary" className="flex items-center gap-2 px-3 py-1.5 text-sm">
-                <Clock className="w-4 h-4" />
-                Opened at {formatTimeFromTimestamp(selectedRegister.timestamp)}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                  <Clock className="w-4 h-4" />
+                  Opened at {formatTimeFromTimestamp(selectedRegister.timestamp)}
+                </Badge>
+
+                {/* Edit Register Time Button - Only for admins and today's register */}
+                {isToday && isAdmin && registerId && (
+                  <EditRegisterTimeButton
+                    registerId={registerId}
+                    currentStartTime={selectedRegister.timestamp}
+                    selectedStartOfDay={selectedStartOfDay}
+                    selectedEndOfDay={selectedEndOfDay}
+                    updateRegisterStartTime={updateRegisterStartTime}
+                  />
+                )}
+              </div>
 
               {/* Date Filter - Moved from header */}
               <div className="flex items-center gap-2">
