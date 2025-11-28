@@ -274,7 +274,8 @@ export function LogDrawer({
                   </div>
                 ) : (
                   <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full">
+                    <div className={editingLogId ? "overflow-x-auto" : ""}>
+                    <table className={`w-full ${editingLogId ? "min-w-[600px]" : ""}`}>
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left p-3 text-sm font-medium">Checkout Time</th>
@@ -385,6 +386,7 @@ export function LogDrawer({
                         })}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
               </div>
