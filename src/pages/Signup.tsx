@@ -1,5 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useAuthActions } from '@convex-dev/auth/react';
+import { useConvex } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -51,6 +53,7 @@ const getFriendlyErrorMessage = (error: any) => {
 function Signup() {
   const navigate = useNavigate();
   const { signIn } = useAuthActions();
+  const convex = useConvex();
 
   const [formData, setFormData] = useState<FormData>({
     email: '',
@@ -97,7 +100,19 @@ function Signup() {
     setLoading(true);
 
     try {
-      // Use Convex Auth to create a new account
+      // First, check if email already exists in the database
+      // @ts-expect-error - Convex type instantiation is too deep, but this works correctly
+      const emailCheck = await convex.query(api.auth.users.checkEmailExists, {
+        email: formData.email.toLowerCase(),
+      }) as { exists: boolean } | null;
+
+      if (emailCheck?.exists) {
+        toast.error('An account with this email already exists. Please sign in instead.', { dismissible: true });
+        setLoading(false);
+        return;
+      }
+
+      // Email doesn't exist, proceed with signup
       await signIn('password', {
         email: formData.email,
         password: formData.password,

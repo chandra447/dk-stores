@@ -28,19 +28,30 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [CustomPasswordProvider],
   callbacks: {
     /**
-     * Control user creation - only allow if it's a signUp flow.
-     * When flow is "signIn" and user doesn't exist, reject the request.
+     * Control user creation and login based on flow type.
+     *
+     * Flow logic:
+     * - signIn + user exists → allow (return existingUserId)
+     * - signIn + user doesn't exist → reject (account not found)
+     * - signUp + user exists → reject (account already exists)
+     * - signUp + user doesn't exist → create user
      */
     async createOrUpdateUser(ctx, args) {
-      // If user already exists, return their ID (sign-in flow works)
-      if (args.existingUserId) {
-        return args.existingUserId;
-      }
-
       // Access the flow from the profile (passed from frontend via _flow)
       const profile = args.profile as { email?: string; name?: string; image?: string; _flow?: string };
       const flow = profile?._flow;
 
+      // If user already exists
+      if (args.existingUserId) {
+        // On sign-up flow with existing account, reject - user should sign in instead
+        if (flow === "signUp") {
+          throw new ConvexError("An account with this email already exists. Please sign in instead.");
+        }
+        // Sign-in flow with existing user - allow login
+        return args.existingUserId;
+      }
+
+      // User doesn't exist - check flow
       // If it's explicitly a sign-in flow and user doesn't exist, reject
       if (flow === "signIn") {
         throw new ConvexError("Account not found. Please sign up first or check your credentials.");

@@ -230,3 +230,18 @@ export const getUserRole = query({
     return (user as any).role;
   },
 });
+
+// Check if an email is already registered (public query for signup validation)
+export const checkEmailExists = query({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, { email }) => {
+    // Check if user exists with this email
+    const existingUser = await ctx.db.query("users")
+      .withIndex("email", (q) => q.eq("email", email.toLowerCase()))
+      .first();
+
+    return { exists: !!existingUser };
+  },
+});
