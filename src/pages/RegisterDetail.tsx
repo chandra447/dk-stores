@@ -17,6 +17,7 @@ import { LogDrawer } from '@/components/LogDrawer';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { DeleteEmployeeDialog } from '@/components/DeleteEmployeeDialog';
 import { EditRegisterTimeButton } from '@/components/EditRegisterTimeDialog';
+import { EditPresentTimeDialog } from '@/components/EditPresentTimeDialog';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useQueryState } from 'nuqs';
@@ -122,6 +123,7 @@ function RegisterDetail() {
   const removeHalfDay = useMutation(api.mutations.removeHalfDay);
   const updateEmployee = useMutation(api.employees.updateEmployee);
   const deleteEmployee = useMutation(api.employees.deleteEmployee);
+  const updatePresentTime = useMutation(api.attendance.updatePresentTime);
   const createManagerAuthAccount = useAction(api.employees.createManagerAuthAccount);
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -131,6 +133,8 @@ function RegisterDetail() {
   const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
+  const [isEditPresentTimeDialogOpen, setIsEditPresentTimeDialogOpen] = useState(false);
+  const [editingPresentTimeEmployee, setEditingPresentTimeEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<EmployeeFilter>('all');
@@ -382,6 +386,18 @@ function RegisterDetail() {
   const handleCancelDelete = () => {
     setIsDeleteDialogOpen(false);
     setDeletingEmployee(null);
+  };
+
+  const handleEditPresentTime = (employee: Employee) => {
+    setEditingPresentTimeEmployee(employee);
+    setIsEditPresentTimeDialogOpen(true);
+    setError('');
+  };
+
+  const getRegisterStartTimeForToday = (): number => {
+    // Use the register log timestamp as the minimum allowed time
+    // This represents when the shop was opened for the day
+    return selectedRegister?.timestamp || Date.now();
   };
 
   const handleViewLogs = (employee: Employee) => {
@@ -842,6 +858,7 @@ function RegisterDetail() {
                   onReturnFromAbsence={handleReturnFromAbsence}
                   onViewLogs={handleViewLogs}
                   onEditEmployee={handleEditEmployee}
+                  onEditPresentTime={handleEditPresentTime}
                   onMarkHalfDay={handleMarkHalfDay}
                   onRemoveHalfDay={handleRemoveHalfDay}
                   onDeleteEmployee={handleDeleteEmployee}
@@ -873,6 +890,24 @@ function RegisterDetail() {
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
       />
+
+      {/* Edit Present Time Dialog */}
+      {editingPresentTimeEmployee && (
+        <EditPresentTimeDialog
+          isOpen={isEditPresentTimeDialogOpen}
+          onClose={() => {
+            setIsEditPresentTimeDialogOpen(false);
+            setEditingPresentTimeEmployee(null);
+          }}
+          employee={editingPresentTimeEmployee}
+          registerStartTime={getRegisterStartTimeForToday()}
+          updatePresentTime={updatePresentTime}
+          onSuccess={() => {
+            setIsEditPresentTimeDialogOpen(false);
+            setEditingPresentTimeEmployee(null);
+          }}
+        />
+      )}
     </div>
   );
 }

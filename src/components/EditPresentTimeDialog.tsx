@@ -4,59 +4,70 @@ import { Button } from '@/components/ui/button';
 import { TimeInput } from '@/components/ui/time-input';
 import { toast } from 'sonner';
 import { Clock, Edit2 } from 'lucide-react';
+import { Employee } from '@/types/employee';
 
-interface EditRegisterTimeDialogProps {
+interface EditPresentTimeDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  registerId: string;
-  currentStartTime: number;
-  selectedStartOfDay: number;
-  selectedEndOfDay: number;
-  updateRegisterStartTime: (args: any) => Promise<any>;
+  employee: Employee;
+  registerStartTime: number; // Start time of register for validation
+  updatePresentTime: (args: any) => Promise<any>;
   onSuccess?: () => void;
 }
 
-export function EditRegisterTimeDialog({
+export function EditPresentTimeDialog({
   isOpen,
   onClose,
-  registerId,
-  currentStartTime,
-  selectedStartOfDay,
-  selectedEndOfDay,
-  updateRegisterStartTime,
+  employee,
+  registerStartTime,
+  updatePresentTime,
   onSuccess,
-}: EditRegisterTimeDialogProps) {
-  const [startTime, setStartTime] = useState<number | undefined>(currentStartTime);
+}: EditPresentTimeDialogProps) {
+  const [presentTime, setPresentTime] = useState<number | undefined>(employee.presentTime || undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (isOpen) {
-      setStartTime(currentStartTime);
+      // Convert the presentTime timestamp to today's date with the same time
+      let timeForToday: number | undefined = undefined;
+      if (employee.presentTime) {
+        const originalTime = new Date(employee.presentTime);
+        const today = new Date();
+        today.setHours(originalTime.getHours(), originalTime.getMinutes(), 0, 0);
+        timeForToday = today.getTime();
+      }
+      setPresentTime(timeForToday);
       setError('');
     } else {
       setIsSubmitting(false);
       setError('');
     }
-  }, [isOpen, currentStartTime]);
+  }, [isOpen, employee.presentTime]);
 
   // Handle time change from TimeInput
-  const handleTimeChange = (timeString: string, timestamp?: number) => {
-    setStartTime(timestamp);
+  const handleTimeChange = (_timeString: string, timestamp?: number) => {
+    setPresentTime(timestamp);
     setError('');
   };
 
   // Validate the form
   const validateForm = (): boolean => {
-    if (!startTime) {
-      setError('Please select a start time');
+    if (!presentTime) {
+      setError('Please select a present time');
       return false;
     }
 
     // Check if time is in the future
-    if (startTime > Date.now()) {
-      setError('Cannot set start time in the future');
+    if (presentTime > Date.now()) {
+      setError('Cannot set present time in the future');
+      return false;
+    }
+
+    // Check if time is before register start time
+    if (presentTime < registerStartTime) {
+      setError('Present time cannot be before register start time');
       return false;
     }
 
@@ -76,27 +87,25 @@ export function EditRegisterTimeDialog({
 
     try {
       // Call the mutation
-      await updateRegisterStartTime({
-        registerId: registerId as any,
-        newStartTime: startTime!,
-        clientLocalStartOfDay: selectedStartOfDay,
-        clientLocalEndOfDay: selectedEndOfDay,
+      await updatePresentTime({
+        rollcallId: employee.rollcallId! as any,
+        newPresentTime: presentTime!,
       });
 
       // Show success message
-      toast.success('Register start time updated successfully', {
-        description: `Opening time is now ${new Date(startTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`,
+      toast.success('Present time updated successfully', {
+        description: `${employee.name} is now marked present at ${new Date(presentTime!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`,
       });
 
       // Close dialog and call success callback
       onClose();
       onSuccess?.();
     } catch (err: any) {
-      console.error('Failed to update register start time:', err);
-      setError(err.message || 'Failed to update register start time');
+      console.error('Failed to update present time:', err);
+      setError(err.message || 'Failed to update present time');
 
-      toast.error('Failed to update start time', {
-        description: err.message || 'An error occurred while updating the register start time.',
+      toast.error('Failed to update present time', {
+        description: err.message || 'An error occurred while updating the present time.',
       });
     } finally {
       setIsSubmitting(false);
@@ -116,7 +125,7 @@ export function EditRegisterTimeDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit2 className="w-5 h-5" />
-            Edit Register Start Time
+            Edit Present Time for {employee.name}
           </DialogTitle>
         </DialogHeader>
 
@@ -124,16 +133,16 @@ export function EditRegisterTimeDialog({
           {/* Time Input */}
           <div>
             <TimeInput
-              value={startTime}
+              value={presentTime as any}
               onChange={handleTimeChange}
-              label="Register Start Time"
-              id="startTime"
+              label="Present Time"
+              id="presentTime"
               required
               error={error}
             />
           </div>
 
-  
+      
 
           {error && (
             <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-lg border border-destructive/20">
@@ -152,7 +161,7 @@ export function EditRegisterTimeDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || !startTime}
+              disabled={isSubmitting || !presentTime}
               className="flex items-center gap-2"
             >
               {isSubmitting ? (
@@ -171,54 +180,5 @@ export function EditRegisterTimeDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// Export a button component that can be used to trigger the dialog
-interface EditRegisterTimeButtonProps {
-  registerId: string;
-  currentStartTime: number;
-  selectedStartOfDay: number;
-  selectedEndOfDay: number;
-  updateRegisterStartTime: (args: any) => Promise<any>;
-  onSuccess?: () => void;
-}
-
-export function EditRegisterTimeButton({
-  registerId,
-  currentStartTime,
-  selectedStartOfDay,
-  selectedEndOfDay,
-  updateRegisterStartTime,
-  onSuccess,
-}: EditRegisterTimeButtonProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 w-8 p-0"
-        onClick={() => setIsDialogOpen(true)}
-        title="Edit register start time"
-      >
-        <Edit2 className="w-4 h-4" />
-      </Button>
-
-      <EditRegisterTimeDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        registerId={registerId}
-        currentStartTime={currentStartTime}
-        selectedStartOfDay={selectedStartOfDay}
-        selectedEndOfDay={selectedEndOfDay}
-        updateRegisterStartTime={updateRegisterStartTime}
-        onSuccess={() => {
-          setIsDialogOpen(false);
-          onSuccess?.();
-        }}
-      />
-    </>
   );
 }

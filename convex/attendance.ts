@@ -727,3 +727,73 @@ export const getEmployeeAttendanceLogs = query({
     };
   },
 });
+
+// Update present time for an employee
+export const updatePresentTime = mutation({
+  args: {
+    rollcallId: v.id("employeeRollcall"),
+    newPresentTime: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("You must be logged in to update present time");
+    }
+
+    // Get the employee rollcall record
+    const rollcall = await ctx.db.get(args.rollcallId);
+    if (!rollcall) {
+      throw new Error("Rollcall record not found");
+    }
+
+    // Verify the employee exists
+    const employee = await ctx.db.get(rollcall.employeeId);
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    // Get the register log to verify access and get register start time
+    const registerLog = await ctx.db.get(rollcall.registerLogId);
+    if (!registerLog) {
+      throw new Error("Register log not found");
+    }
+
+    const register = await ctx.db.get(registerLog.registerId);
+    if (!register) {
+      throw new Error("Register not found");
+    }
+
+    // Check if user has access (owner or assigned manager)
+    const hasAccess = await hasRegisterAccess(ctx, register._id, userId);
+    if (!hasAccess) {
+      throw new Error("Access denied");
+    }
+
+    // Strict validation rules
+    const now = Date.now();
+
+    // 1. No future timestamps allowed
+    if (args.newPresentTime > now) {
+      throw new Error("Present time cannot be in the future");
+    }
+
+    // 2. Present time must be after register open time for the day
+    // The registerLog.timestamp represents when the shop opened for the day
+    if (args.newPresentTime < registerLog.timestamp) {
+      throw new Error("Present time cannot be before register opening time");
+    }
+
+    // 3. Ensure employee is currently marked present (not absent)
+    if (rollcall.absentTime && !rollcall.presentTime) {
+      throw new Error("Cannot edit present time for absent employee");
+    }
+
+    // Update the employee rollcall with new present time
+    await ctx.db.patch(args.rollcallId, {
+      presentTime: args.newPresentTime,
+      updatedAt: now,
+    });
+
+    return args.rollcallId;
+  },
+});

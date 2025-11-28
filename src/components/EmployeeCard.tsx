@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Home, Coffee, FileText, Edit3, Trash2 } from 'lucide-react';
+import { MoreVertical, Home, Coffee, FileText, Edit3, Trash2, Clock } from 'lucide-react';
 import { useMotionValue, useTransform, motion } from 'motion/react';
 import { useEffect } from 'react';
 import { Employee } from '../types/employee';
@@ -20,6 +20,7 @@ interface EmployeeCardProps {
   onReturnFromAbsence: (rollcallId: string) => void;
   onViewLogs: (employee: Employee) => void;
   onEditEmployee: (employee: Employee) => void;
+  onEditPresentTime?: (employee: Employee) => void;
   onMarkHalfDay: (rollcallId: string) => void;
   onRemoveHalfDay: (rollcallId: string) => void;
   onDeleteEmployee: (employee: Employee) => void;
@@ -91,6 +92,7 @@ export function EmployeeCard({
   onReturnFromAbsence,
   onViewLogs,
   onEditEmployee,
+  onEditPresentTime,
   onMarkHalfDay,
   onRemoveHalfDay,
   onDeleteEmployee,
@@ -140,6 +142,12 @@ export function EmployeeCard({
                 <FileText className="w-4 h-4 mr-2" />
                 View Log
               </DropdownMenuItem>
+              {isToday && onEditPresentTime && employee.status === 'present' && employee.presentTime && (
+                <DropdownMenuItem onClick={() => onEditPresentTime(employee)}>
+                  <Clock className="w-4 h-4 mr-2" />
+                  Edit Present Time
+                </DropdownMenuItem>
+              )}
               {employee.status === 'present' && employee.rollcallId && !employee.halfDay && (
                 <DropdownMenuItem onClick={() => onMarkHalfDay(employee.rollcallId!)}>
                   Mark Half Day
