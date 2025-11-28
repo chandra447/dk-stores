@@ -1,10 +1,11 @@
-const CACHE_NAME = 'dk-store-attendance-v1';
-const STATIC_CACHE_NAME = 'dk-store-static-v1';
-const DYNAMIC_CACHE_NAME = 'dk-store-dynamic-v1';
+// Version is updated on each build - Netlify will serve fresh SW with new deploy
+const SW_VERSION = Date.now().toString();
+const CACHE_NAME = `dk-store-cache-${SW_VERSION}`;
+const STATIC_CACHE_NAME = `dk-store-static-${SW_VERSION}`;
+const DYNAMIC_CACHE_NAME = `dk-store-dynamic-${SW_VERSION}`;
 
-// Assets to cache for offline functionality
+// Assets to cache for offline functionality (only truly static assets)
 const STATIC_ASSETS = [
-  '/',
   '/offline.html',
   '/manifest.json',
   '/logo_transparent.png',
@@ -16,9 +17,9 @@ const STATIC_ASSETS = [
   '/android-chrome-512x512.png'
 ];
 
-// Install event - cache static assets
+// Install event - cache static assets and force activation
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker...');
+  console.log('[SW] Installing Service Worker version:', SW_VERSION);
 
   event.waitUntil(
     caches.open(STATIC_CACHE_NAME)
@@ -27,7 +28,8 @@ self.addEventListener('install', (event) => {
         return cache.addAll(STATIC_ASSETS);
       })
       .then(() => {
-        console.log('[SW] Installation complete');
+        console.log('[SW] Installation complete, skipping waiting');
+        // Force immediate activation - don't wait for old SW to be released
         return self.skipWaiting();
       })
       .catch((error) => {
@@ -36,16 +38,17 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches and take control immediately
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Service Worker...');
+  console.log('[SW] Activating Service Worker version:', SW_VERSION);
 
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== STATIC_CACHE_NAME && cacheName !== DYNAMIC_CACHE_NAME) {
+            // Delete ALL old caches that don't match current version
+            if (!cacheName.includes(SW_VERSION)) {
               console.log('[SW] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
@@ -53,8 +56,21 @@ self.addEventListener('activate', (event) => {
         );
       })
       .then(() => {
-        console.log('[SW] Activation complete');
+        console.log('[SW] Activation complete, claiming clients');
+        // Take control of all pages immediately
         return self.clients.claim();
+      })
+      .then(() => {
+        // Notify all clients about the update
+        return self.clients.matchAll({ type: 'window' });
+      })
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'SW_UPDATED',
+            version: SW_VERSION
+          });
+        });
       })
       .catch((error) => {
         console.error('[SW] Activation failed:', error);
@@ -62,7 +78,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - implement caching strategy
+// Fetch event - Network-first strategy for HTML, cache-first for hashed assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -73,57 +89,52 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip Convex API calls - they need real-time access
-  if (url.pathname.includes('/api/')) {
+  if (url.pathname.includes('/api/') || url.hostname.includes('convex')) {
     return;
   }
 
+  // For HTML documents (navigation requests) - ALWAYS network first
+  if (request.destination === 'document' || request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          return networkResponse;
+        })
+        .catch(() => {
+          // Only use cache/offline when truly offline
+          return caches.match('/offline.html');
+        })
+    );
+    return;
+  }
+
+  // For hashed assets (/assets/*) - Cache first (they're immutable)
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return fetch(request).then((networkResponse) => {
+            if (networkResponse.ok) {
+              const responseClone = networkResponse.clone();
+              caches.open(DYNAMIC_CACHE_NAME)
+                .then((cache) => cache.put(request, responseClone));
+            }
+            return networkResponse;
+          });
+        })
+    );
+    return;
+  }
+
+  // For static assets (images, favicons) - Stale while revalidate
   event.respondWith(
     caches.match(request)
       .then((cachedResponse) => {
-        // Return cached version if available
-        if (cachedResponse) {
-          // For HTML files, try network first but serve cached immediately
-          if (request.destination === 'document') {
-            // Update cache in background
-            fetch(request)
-              .then((networkResponse) => {
-                if (networkResponse.ok) {
-                  const responseClone = networkResponse.clone();
-                  caches.open(DYNAMIC_CACHE_NAME)
-                    .then((cache) => cache.put(request, responseClone));
-                }
-              })
-              .catch(() => {
-                // Network failed, serving cached version
-                console.log('[SW] Network failed, serving cached HTML');
-              });
-          }
-          return cachedResponse;
-        }
-
-        // For HTML files, try network first, fallback to offline page
-        if (request.destination === 'document') {
-          return fetch(request)
-            .then((networkResponse) => {
-              // Cache successful responses
-              if (networkResponse.ok) {
-                const responseClone = networkResponse.clone();
-                caches.open(DYNAMIC_CACHE_NAME)
-                  .then((cache) => cache.put(request, responseClone));
-              }
-              return networkResponse;
-            })
-            .catch(() => {
-              // Network failed, return offline page
-              console.log('[SW] Network failed, serving offline page');
-              return caches.match('/offline.html');
-            });
-        }
-
-        // For other assets, use cache first with network fallback
-        return fetch(request)
+        const fetchPromise = fetch(request)
           .then((networkResponse) => {
-            // Cache successful responses
             if (networkResponse.ok) {
               const responseClone = networkResponse.clone();
               caches.open(DYNAMIC_CACHE_NAME)
@@ -132,13 +143,16 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
           })
           .catch(() => {
-            console.log('[SW] Network failed for:', request.url);
-            // Return 404 for non-cached assets
+            // Network failed, return cached or error
+            if (cachedResponse) return cachedResponse;
             return new Response('Resource not available offline', {
               status: 404,
               statusText: 'Not Found'
             });
           });
+
+        // Return cached immediately, update in background
+        return cachedResponse || fetchPromise;
       })
   );
 });
@@ -202,5 +216,15 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  // Allow app to request current version
+  if (event.data && event.data.type === 'GET_VERSION') {
+    event.ports[0].postMessage({ version: SW_VERSION });
+  }
+  
+  // Force update check
+  if (event.data && event.data.type === 'CHECK_UPDATE') {
+    self.registration.update();
   }
 });

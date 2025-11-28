@@ -1,10 +1,12 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { NuqsAdapter } from 'nuqs/adapters/react-router/v6';
 import { ConvexReactClient, Authenticated, Unauthenticated, AuthLoading } from 'convex/react';
 import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import { Spinner } from '@/components/ui/spinner';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { PullToRefresh } from '@/components/PullToRefresh';
+import { forceReload } from './main';
 
 // Layout Components
 import PublicLayout from './components/Layout/PublicLayout';
@@ -98,6 +100,36 @@ function AppContent() {
 }
 
 function App() {
+  // Listen for service worker updates and show toast
+  useEffect(() => {
+    const handleUpdate = () => {
+      toast.info('A new version is available!', {
+        description: 'Click to update and get the latest features.',
+        duration: Infinity,
+        dismissible: true,
+        action: {
+          label: 'Update Now',
+          onClick: () => {
+            forceReload();
+          },
+        },
+      });
+    };
+
+    // Check if update was pending from before
+    if (sessionStorage.getItem('sw_update_available') === 'true') {
+      sessionStorage.removeItem('sw_update_available');
+      handleUpdate();
+    }
+
+    // Listen for future updates
+    window.addEventListener('sw-update-available', handleUpdate);
+    
+    return () => {
+      window.removeEventListener('sw-update-available', handleUpdate);
+    };
+  }, []);
+
   return (
     <ConvexAuthProvider client={convex}>
       <NuqsAdapter>
