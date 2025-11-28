@@ -72,6 +72,9 @@ function AppContent() {
 
       <Authenticated>
         <Routes>
+          {/* Redirect root path to registers for authenticated users */}
+          <Route index element={<Navigate to="/registers" replace />} />
+          
           {/* Admin-Only Dashboard Route */}
           <Route path="/" element={
             <AdminProtectedRoute>

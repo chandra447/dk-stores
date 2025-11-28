@@ -122,9 +122,9 @@ function Signup() {
 
       setSuccess(true);
       toast.success('Account created successfully!', { dismissible: true });
-      // Redirect to login after successful signup
+      // Redirect to registers after successful signup (user is already authenticated)
       setTimeout(() => {
-        navigate('/login');
+        navigate('/registers');
       }, 3000);
     } catch (err: any) {
       console.error('Sign up error:', err);
