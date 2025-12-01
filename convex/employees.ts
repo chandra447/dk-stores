@@ -71,15 +71,39 @@ export const createManagerAuthAccount = action({
     name: v.string(),
     pin: v.string(),
   },
-  handler: async (ctx: ActionCtx, args): Promise<{ success: boolean; userId: Id<"users">; email: string }> => {
+  handler: async (ctx: ActionCtx, args): Promise<{ success: boolean; userId: Id<"users">; email: string; originalName: string; normalizedName: string }> => {
     try {
+      console.log("🔧 [DEBUG] Creating manager auth account for:", { name: args.name, employeeId: args.employeeId });
+
+      // Validate input
+      if (!args.name?.trim()) {
+        throw new Error("Manager name is required");
+      }
+      if (!args.pin?.trim()) {
+        throw new Error("Manager PIN is required");
+      }
+      if (args.pin.length !== 4) {
+        throw new Error("Manager PIN must be exactly 4 digits");
+      }
+
       // Generate unique email for manager account using name and part of employeeId
       // Format: name.last4ofID@rollcall.local
       const idSuffix = args.employeeId.slice(-4);
-      const cleanName = args.name.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
+      const originalName = args.name.trim();
+      const cleanName = originalName.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
       const managerEmail = `${cleanName}.${idSuffix}@rollcall.local`;
 
+      console.log("🔧 [DEBUG] Generated email and name:", {
+        originalName,
+        cleanName,
+        managerEmail
+      });
+
+      // Check if user already exists
+      // Note: We can't query users directly in an action, so we'll rely on createAccount to handle duplicates
+
       // Create Convex auth account for the manager
+      console.log("🔧 [DEBUG] Creating Convex auth account...");
       const { user } = await createAccount(ctx, {
         provider: "password",
         account: {
@@ -87,22 +111,49 @@ export const createManagerAuthAccount = action({
           secret: args.pin
         },
         profile: {
-          name: args.name,
+          name: originalName, // Store original name with spaces
           email: managerEmail,
           role: "manager"
         }
       });
 
+      console.log("🔧 [DEBUG] Auth account created successfully:", { userId: user._id });
+
       // Link the employee record to the new user account
       // @ts-ignore
       const linkMutation = internal.auth.users.linkEmployeeToUser;
+      console.log("🔧 [DEBUG] Linking employee to user...");
       await (ctx as any).runMutation(linkMutation, {
         employeeId: args.employeeId,
         userId: user._id,
       });
 
-      return { success: true, userId: user._id, email: managerEmail };
+      console.log("✅ [DEBUG] Manager auth account created and linked successfully:", {
+        userId: user._id,
+        email: managerEmail,
+        originalName,
+        normalizedName: cleanName
+      });
+
+      return {
+        success: true,
+        userId: user._id,
+        email: managerEmail,
+        originalName,
+        normalizedName: cleanName
+      };
     } catch (error: any) {
+      console.error("❌ [ERROR] Failed to create manager auth account:", {
+        error: error.message,
+        stack: error.stack,
+        args: { name: args.name, employeeId: args.employeeId }
+      });
+
+      // Provide more specific error messages
+      if (error.message.includes("already exists")) {
+        throw new Error("A manager account with this name already exists. Please use a different name or contact support.");
+      }
+
       throw new Error(`Failed to create manager auth account: ${error.message}`);
     }
   },

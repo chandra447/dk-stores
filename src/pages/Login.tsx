@@ -98,7 +98,16 @@ function Login() {
         email = findManagerAccount.email || '';
         password = formData.pin;
       } else {
-        toast.error('Manager account not found. Please check your name or contact Admin.', { dismissible: true });
+        console.error('🚨 [LOGIN ERROR] Manager account not found:', {
+          searchedName: formData.identifier.trim(),
+          normalizedForSearch: formData.identifier.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, ''),
+          availableManagers: findManagerAccount ? 'Account found but query failed' : 'No account found'
+        });
+
+        toast.error(
+          `Manager account "${formData.identifier.trim()}" not found. Please check your name or contact Admin.`,
+          { dismissible: true }
+        );
         setLoading(false);
         return;
       }
