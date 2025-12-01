@@ -24,25 +24,11 @@ export const findManagerAccountByName = query({
   handler: async (ctx, { name }) => {
     console.log("🔍 [DEBUG] Searching for manager with name:", name);
 
-    // BYPASS INDEX: Direct scan since index appears to have issues
-    console.log("🔍 [DEBUG] Using direct scan (bypassing byRole index)...");
-    const allUsers = await ctx.db.query("users").collect();
-    console.log("🔍 [DEBUG] Total users in database:", allUsers.length);
-
-    // Filter for manager users manually
-    const managerUsers = allUsers.filter(user => {
-      const userRole = (user as any).role;
-      const isManager = userRole === "manager";
-      if (isManager) {
-        console.log("✅ [DEBUG] Found manager:", {
-          name: user.name,
-          email: user.email,
-          role: userRole,
-          id: user._id
-        });
-      }
-      return isManager;
-    });
+    // Use the byRole index to get only manager users
+    console.log("🔍 [DEBUG] Using byRole index to find manager users...");
+    const managerUsers = await ctx.db.query("users")
+      .withIndex("byRole", (q) => q.eq("role", "manager"))
+      .collect();
 
     console.log("🔍 [DEBUG] Found manager users:", managerUsers.length);
 
@@ -75,7 +61,7 @@ export const findManagerAccountByName = query({
       if (matchingManager) {
         console.log("✅ [DEBUG] Found normalized match:", matchingManager.name);
       } else {
-        // Strategy 3: Emergency fallback - check if name is substring of email
+        // Strategy 3: Substring fallback - check if name is substring of email/name
         matchingManager = managerUsers.find(user =>
           user.email?.toLowerCase().includes(name.toLowerCase()) ||
           user.name?.toLowerCase().includes(name.toLowerCase()) ||
@@ -83,7 +69,7 @@ export const findManagerAccountByName = query({
         );
 
         if (matchingManager) {
-          console.log("🚨 [EMERGENCY FALLBACK] Found substring match:", matchingManager.name);
+          console.log("✅ [DEBUG] Found substring match:", matchingManager.name);
         }
       }
     }
@@ -92,18 +78,7 @@ export const findManagerAccountByName = query({
       console.log("❌ [DEBUG] No matching manager found for name:", name);
       console.log("🔍 [DEBUG] Available manager names:", managerUsers.map(u => u.name));
       console.log("🔍 [DEBUG] Available manager emails:", managerUsers.map(u => u.email));
-
-      // EMERGENCY FALLBACK: If name is "adi", try to find any user with "adi" in email
-      const emergencyMatch = managerUsers.find(user =>
-        user.email?.toLowerCase().includes(name.toLowerCase())
-      );
-
-      if (emergencyMatch) {
-        console.log("🚨 [EMERGENCY FALLBACK] Found emergency match by email:", emergencyMatch.email);
-        matchingManager = emergencyMatch;
-      } else {
-        return null;
-      }
+      return null;
     }
 
     // Verify the user has the required fields

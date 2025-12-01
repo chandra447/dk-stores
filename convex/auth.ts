@@ -17,6 +17,7 @@ const CustomPasswordProvider = Password<DataModel>({
     return {
       email: params.email as string,
       name: params.name as string || (params.email as string).split("@")[0],
+      role: params.role as "admin" | "manager" | undefined, // Extract role field with proper type
       // Pass the flow parameter so we can access it in createOrUpdateUser callback
       // This helps us reject sign-in attempts for non-existent accounts
       _flow: params.flow as string | undefined,
@@ -38,7 +39,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
      */
     async createOrUpdateUser(ctx, args) {
       // Access the flow from the profile (passed from frontend via _flow)
-      const profile = args.profile as { email?: string; name?: string; image?: string; _flow?: string };
+      const profile = args.profile as { email?: string; name?: string; image?: string; role?: "admin" | "manager"; _flow?: string };
       const flow = profile?._flow;
 
       // If user already exists
@@ -62,6 +63,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         email: profile?.email,
         name: profile?.name,
         image: profile?.image,
+        role: profile?.role, // Save the role field if provided
       });
     },
   },
