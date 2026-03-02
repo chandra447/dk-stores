@@ -158,6 +158,7 @@ function RegisterDetail() {
     presentTime: emp.presentTime as number | null,
     absentTime: emp.absentTime as number | null,
     halfDay: emp.halfDay as boolean | undefined,
+    breakLogsCount: emp.breakLogsCount as number | undefined,
   }));
 
   const [formData, setFormData] = useState<CreateEmployeeFormData>({

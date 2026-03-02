@@ -9,7 +9,7 @@ import { Employee } from '../types/employee';
 import { BreakGauge } from './BreakGauge';
 
 interface EmployeeCardProps {
-  employee: Employee & { usedBreakTime?: number };
+  employee: Employee & { usedBreakTime?: number; breakLogsCount?: number };
   todayRegisterLog: any;
   isAdmin: boolean;
   isToday: boolean;
@@ -203,6 +203,7 @@ export function EmployeeCard({
           <BreakGauge
             used={Math.floor((employee.usedBreakTime || 0) / (1000 * 60))}
             allowed={employee.allowedBreakTime}
+            logsCount={employee.breakLogsCount}
           />
         </div>
       )}

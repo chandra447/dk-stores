@@ -267,6 +267,8 @@ export const getEmployeesWithStatus = query({
         presentTime: null,
         absentTime: null,
         halfDay: false,
+        usedBreakTime: 0,
+        breakLogsCount: 0,
       }));
     }
 
@@ -294,6 +296,7 @@ export const getEmployeesWithStatus = query({
         let halfDay = false;
 
         let usedBreakTime = 0;
+        let breakLogsCount = 0;
 
         if (rollcall) {
           halfDay = rollcall.halfDay || false;
@@ -303,10 +306,17 @@ export const getEmployeesWithStatus = query({
             .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
             .collect();
 
+          breakLogsCount = allBreaks.length;
           usedBreakTime = allBreaks.reduce((total, log) => {
             const endTime = log.checkOutTime || Date.now();
             return total + (endTime - log.checkinTime);
           }, 0);
+
+          // Add lateness (time between shop opening and employee arrival) to used break time
+          if (rollcall.presentTime) {
+            const lateness = Math.max(0, rollcall.presentTime - todayRegisterLog.timestamp);
+            usedBreakTime += lateness;
+          }
 
           if (rollcall.absentTime) {
             status = "absent";
@@ -345,7 +355,8 @@ export const getEmployeesWithStatus = query({
           presentTime,
           absentTime,
           halfDay,
-          usedBreakTime, // Add this field
+          usedBreakTime,
+          breakLogsCount,
         };
       })
     );

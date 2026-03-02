@@ -4,9 +4,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 interface BreakGaugeProps {
     used: number;
     allowed: number;
+    logsCount?: number;
 }
 
-export function BreakGauge({ used, allowed }: BreakGaugeProps) {
+export function BreakGauge({ used, allowed, logsCount }: BreakGaugeProps) {
     // Calculate scale:
     const maxScale = Math.max(allowed * 1.4, used * 1.1);
     const allowedPercent = (allowed / maxScale) * 100;
@@ -22,7 +23,9 @@ export function BreakGauge({ used, allowed }: BreakGaugeProps) {
     return (
         <div className="space-y-2 pt-2">
             <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground font-medium text-xs uppercase tracking-wider">Break Time</span>
+                <span className="text-muted-foreground font-medium text-xs uppercase tracking-wider">
+                    Break Time{logsCount !== undefined && logsCount > 0 ? <span className="text-muted-foreground/70 normal-case tracking-normal font-normal"> ({logsCount} {logsCount === 1 ? 'break' : 'breaks'})</span> : ''}
+                </span>
                 <span className={`font-mono text-xs ${isExceeded ? "text-red-500 font-bold" : "text-muted-foreground"}`}>
                     {formatToHHMM(used)} <span className="text-muted-foreground/50">/</span> {formatToHHMM(allowed)}
                 </span>
