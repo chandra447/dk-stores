@@ -183,12 +183,18 @@ export function LogDrawer({
               {/* Break Gauge */}
               <div className="px-1">
                 <BreakGauge
-                  used={Math.floor(logs.logs.reduce((total, log) => {
-                    return total + (log.checkOutTime
-                      ? log.checkOutTime - log.checkinTime
-                      : Date.now() - log.checkinTime);
-                  }, 0) / (1000 * 60))}
+                  used={Math.floor((
+                    logs.logs.reduce((total, log) => {
+                      return total + (log.checkOutTime
+                        ? log.checkOutTime - log.checkinTime
+                        : Date.now() - log.checkinTime);
+                    }, 0) +
+                    (logs.rollcall.presentTime
+                      ? Math.max(0, logs.rollcall.presentTime - logs.registerLog.timestamp)
+                      : 0)
+                  ) / (1000 * 60))}
                   allowed={logs.employee.allowedBreakTime}
+                  logsCount={logs.logs.length}
                 />
               </div>
 
@@ -268,127 +274,152 @@ export function LogDrawer({
                     </p>
                   </div>
                 )}
-                {logs.logs.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No break logs for this employee today
-                  </div>
-                ) : (
-                  <div className="border rounded-lg overflow-hidden">
-                    <div className={editingLogId ? "overflow-x-auto" : ""}>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className={editingLogId ? "overflow-x-auto" : ""}>
                     <table className={`w-full ${editingLogId ? "min-w-[600px]" : ""}`}>
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="text-left p-3 text-sm font-medium">Checkout Time</th>
-                          <th className="text-left p-3 text-sm font-medium">Check-in Time</th>
-                          <th className="text-left p-3 text-sm font-medium">Duration</th>
-                          <th className="text-left p-3 text-sm font-medium">Actions</th>
-                        </tr>
-                      </thead>
                       <tbody>
-                        {logs.logs.map((log) => {
-                          const duration = log.checkOutTime
-                            ? log.checkOutTime - log.checkinTime
-                            : Date.now() - log.checkinTime;
-                          const isEditing = editingLogId === log.id;
-
-                          return (
-                            <tr
-                              key={log.id}
-                              className={`border-b ${isEditing
-                                  ? 'bg-blue-50 dark:bg-blue-950'
-                                  : log.isActive
-                                    ? 'bg-red-50 dark:bg-red-950'
-                                    : 'hover:bg-muted/25'
-                                }`}
-                            >
-                              <td className="p-3">
-                                {isEditing ? (
-                                  <div className="min-w-[220px]">
-                                    <TimeInput
-                                      value={editTimestamps.checkinTimestamp || undefined}
-                                      onChange={(value, timestamp) => handleFieldChange('checkinTime', value, timestamp)}
-                                      placeholder="Check-in time"
-                                      error={errors.checkin}
-                                      required
-                                    />
-                                  </div>
-                                ) : (
-                                  <>
-                                    {formatTimeWithAMPM(log.checkinTime)}
-                                    {log.isActive && (
-                                      <span className="ml-2 text-xs text-red-600 dark:text-red-400 font-medium">
-                                        (ACTIVE)
-                                      </span>
-                                    )}
-                                  </>
-                                )}
-                              </td>
-                              <td className="p-3">
-                                {isEditing ? (
-                                  <div className="min-w-[220px]">
-                                    <TimeInput
-                                      value={editTimestamps.checkoutTimestamp || undefined}
-                                      onChange={(value, timestamp) => handleFieldChange('checkOutTime', value, timestamp)}
-                                      placeholder="Check-out time"
-                                      error={errors.checkout}
-                                    />
-                                  </div>
-                                ) : (
-                                  log.checkOutTime ? formatTimeWithAMPM(log.checkOutTime) : '-'
-                                )}
-                              </td>
-                              <td className="p-3">
-                                {formatBreakDuration(duration)}
-                              </td>
-                              <td className="p-3">
-                                {isEditing ? (
-                                  <div className="flex gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={saveLog}
-                                      disabled={isSaving}
-                                      className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
-                                    >
-                                      <Save className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={cancelEditing}
-                                      disabled={isSaving}
-                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <div className="relative group">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => startEditing(log)}
-                                      disabled={!isToday}
-                                      className={`h-8 w-8 p-0 ${!isToday ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <Edit3 className="h-4 w-4" />
-                                    </Button>
-                                    {!isToday && (
-                                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                        Only today's logs can be edited
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                        {/* Arrival section */}
+                        {logs.rollcall.presentTime && (
+                          <>
+                            <tr className="bg-blue-50/50 dark:bg-blue-950/50 border-b">
+                              <td colSpan={4} className="px-3 py-2">
+                                <span className="text-xs uppercase tracking-wider font-semibold text-blue-600 dark:text-blue-400">Arrival</span>
                               </td>
                             </tr>
-                          );
-                        })}
+                            <tr className="border-b">
+                              <td className="p-3 text-sm">{formatTimeWithAMPM(logs.rollcall.presentTime)}</td>
+                              <td className="p-3 text-sm">{formatTimeWithAMPM(logs.registerLog.timestamp)}</td>
+                              <td className="p-3 text-sm">
+                                {(() => {
+                                  const lateness = calculateLateness(logs.rollcall.presentTime!, logs.registerLog.timestamp);
+                                  if (lateness > 0) {
+                                    return <span className="text-blue-600 dark:text-blue-400">{formatBreakDuration(lateness)} late</span>;
+                                  }
+                                  return <span className="text-green-600 dark:text-green-400">On Time</span>;
+                                })()}
+                              </td>
+                              <td className="p-3 text-muted-foreground">—</td>
+                            </tr>
+                          </>
+                        )}
+
+                        {/* Break Logs section */}
+                        <tr className="bg-muted/30 border-b">
+                          <td colSpan={4} className="px-3 py-2">
+                            <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Break Logs</span>
+                          </td>
+                        </tr>
+                        {logs.logs.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="p-6 text-center text-sm text-muted-foreground">
+                              No break sessions
+                            </td>
+                          </tr>
+                        ) : (
+                          logs.logs.map((log) => {
+                            const duration = log.checkOutTime
+                              ? log.checkOutTime - log.checkinTime
+                              : Date.now() - log.checkinTime;
+                            const isEditing = editingLogId === log.id;
+
+                            return (
+                              <tr
+                                key={log.id}
+                                className={`border-b ${isEditing
+                                    ? 'bg-blue-50 dark:bg-blue-950'
+                                    : log.isActive
+                                      ? 'bg-red-50 dark:bg-red-950'
+                                      : 'hover:bg-muted/25'
+                                  }`}
+                              >
+                                <td className="p-3">
+                                  {isEditing ? (
+                                    <div className="min-w-[220px]">
+                                      <TimeInput
+                                        value={editTimestamps.checkinTimestamp || undefined}
+                                        onChange={(value, timestamp) => handleFieldChange('checkinTime', value, timestamp)}
+                                        placeholder="Check-in time"
+                                        error={errors.checkin}
+                                        required
+                                      />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {formatTimeWithAMPM(log.checkinTime)}
+                                      {log.isActive && (
+                                        <span className="ml-2 text-xs text-red-600 dark:text-red-400 font-medium">
+                                          (ACTIVE)
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </td>
+                                <td className="p-3">
+                                  {isEditing ? (
+                                    <div className="min-w-[220px]">
+                                      <TimeInput
+                                        value={editTimestamps.checkoutTimestamp || undefined}
+                                        onChange={(value, timestamp) => handleFieldChange('checkOutTime', value, timestamp)}
+                                        placeholder="Check-out time"
+                                        error={errors.checkout}
+                                      />
+                                    </div>
+                                  ) : (
+                                    log.checkOutTime ? formatTimeWithAMPM(log.checkOutTime) : '-'
+                                  )}
+                                </td>
+                                <td className="p-3">
+                                  {formatBreakDuration(duration)}
+                                </td>
+                                <td className="p-3">
+                                  {isEditing ? (
+                                    <div className="flex gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={saveLog}
+                                        disabled={isSaving}
+                                        className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                      >
+                                        <Save className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={cancelEditing}
+                                        disabled={isSaving}
+                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="relative group">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => startEditing(log)}
+                                        disabled={!isToday}
+                                        className={`h-8 w-8 p-0 ${!isToday ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      >
+                                        <Edit3 className="h-4 w-4" />
+                                      </Button>
+                                      {!isToday && (
+                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                          Only today's logs can be edited
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
                       </tbody>
                     </table>
-                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
