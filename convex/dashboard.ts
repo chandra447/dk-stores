@@ -169,6 +169,21 @@ export const getDashboardStats = query({
       }
     });
 
+    // Batch: fetch all attendance logs for all rollcalls using indexed queries
+    const allBreaksResults = await Promise.all(
+      rollcallEntries
+        .filter(r => r.presentTime)
+        .map(async (rollcall) => {
+          const breaks = await ctx.db.query("attendanceLogs")
+            .withIndex("byRollcall", q => q.eq("employeeRollcallId", rollcall._id))
+            .collect();
+          return { rollcallId: rollcall._id.toString(), breaks };
+        })
+    );
+    const breaksByRollcall = new Map(
+      allBreaksResults.map(({ rollcallId, breaks }) => [rollcallId, breaks] as const)
+    );
+
     for (const rollcall of rollcallEntries) {
       if (rollcall.presentTime) {
         const employeeRate = employeeRates.get(rollcall.employeeId.toString()) || 0;
@@ -194,11 +209,8 @@ export const getDashboardStats = query({
           const hoursWorked = (endTime - rollcall.presentTime) / (1000 * 60 * 60);
           totalHours += Math.max(0, hoursWorked);
 
-          // Calculate break time usage for this employee
-          const attendanceLogs = await ctx.db.query("attendanceLogs")
-            .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
-            .collect();
-
+          // Calculate break time usage from pre-fetched data
+          const attendanceLogs = breaksByRollcall.get(rollcall._id.toString()) || [];
           const employeeBreakTime = attendanceLogs.reduce((total, log) => {
             const breakEndTime = log.checkOutTime || Date.now();
             return total + (breakEndTime - log.checkinTime);
@@ -488,65 +500,67 @@ export const getHourlyData = query({
       }
     });
 
+    // Batch: fetch all attendance logs for present rollcalls using indexed queries
+    const presentRollcalls = rollcalls.filter(r => r.presentTime);
+    const hourlyBreaksResults = await Promise.all(
+      presentRollcalls.map(async (rollcall) => {
+        const breaks = await ctx.db.query("attendanceLogs")
+          .withIndex("byRollcall", q => q.eq("employeeRollcallId", rollcall._id))
+          .collect();
+        return { rollcallId: rollcall._id.toString(), breaks };
+      })
+    );
+    const hourlyBreaksByRollcall = new Map(
+      hourlyBreaksResults.map(({ rollcallId, breaks }) => [rollcallId, breaks] as const)
+    );
+
     // Group by date and calculate hours
     const hoursByDate = new Map<string, { workDuration: number; breakDuration: number }>();
 
-    for (const rollcall of rollcalls) {
-      if (rollcall.presentTime) {
-        const employee = employeeMap.get(rollcall.employeeId.toString());
-        if (!employee) continue;
+    for (const rollcall of presentRollcalls) {
+      const employee = employeeMap.get(rollcall.employeeId.toString());
+      if (!employee) continue;
 
-        // Adjust for timezone
-        const offset = args.timezoneOffset || 0;
-        const localTime = rollcall.createdAt - (offset * 60 * 1000);
-        const date = new Date(localTime).toISOString().split('T')[0];
+      // Adjust for timezone
+      const offset = args.timezoneOffset || 0;
+      const localTime = rollcall.createdAt - (offset * 60 * 1000);
+      const date = new Date(localTime).toISOString().split('T')[0];
 
-        // Calculate End Time: Absent Time OR Shift End Time
-        // If absentTime is not set, use the shift end time for that day
-        let endTime = rollcall.absentTime;
-        if (!endTime) {
-          // Construct shift end time for the day of the rollcall
-          const rollcallDate = new Date(rollcall.presentTime);
-          const shiftEnd = new Date(rollcallDate);
+      // Calculate End Time: Absent Time OR Shift End Time
+      let endTime = rollcall.absentTime;
+      if (!endTime) {
+        const rollcallDate = new Date(rollcall.presentTime!);
+        const shiftEnd = new Date(rollcallDate);
 
-          // Parse shift end time (ms from midnight)
-          const shiftEndHours = Math.floor(employee.endTime / (1000 * 60 * 60));
-          const shiftEndMinutes = Math.floor((employee.endTime % (1000 * 60 * 60)) / (1000 * 60));
+        const shiftEndHours = Math.floor(employee.endTime / (1000 * 60 * 60));
+        const shiftEndMinutes = Math.floor((employee.endTime % (1000 * 60 * 60)) / (1000 * 60));
 
-          shiftEnd.setHours(shiftEndHours, shiftEndMinutes, 0, 0);
-
-          // Handle day crossing if shift end is before shift start (e.g. night shift)
-          // For now assuming simple day shift
-          endTime = shiftEnd.getTime();
-        }
-
-        // Calculate Total Duration (Present to End)
-        // Ensure non-negative
-        const totalDurationMs = Math.max(0, endTime - rollcall.presentTime);
-
-        // Calculate Break Duration
-        const attendanceLogs = await ctx.db.query("attendanceLogs")
-          .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
-          .collect();
-
-        const breakDurationMs = attendanceLogs.reduce((total, log) => {
-          const breakEndTime = log.checkOutTime || Date.now();
-          return total + Math.max(0, breakEndTime - log.checkinTime);
-        }, 0);
-
-        // Work Duration = Total Duration - Break Duration
-        const workDurationMs = Math.max(0, totalDurationMs - breakDurationMs);
-
-        // Convert to Hours
-        const workDurationHours = workDurationMs / (1000 * 60 * 60);
-        const breakDurationHours = breakDurationMs / (1000 * 60 * 60);
-
-        const current = hoursByDate.get(date) || { workDuration: 0, breakDuration: 0 };
-        hoursByDate.set(date, {
-          workDuration: current.workDuration + workDurationHours,
-          breakDuration: current.breakDuration + breakDurationHours
-        });
+        shiftEnd.setHours(shiftEndHours, shiftEndMinutes, 0, 0);
+        endTime = shiftEnd.getTime();
       }
+
+      // Calculate Total Duration (Present to End)
+      const totalDurationMs = Math.max(0, endTime - rollcall.presentTime!);
+
+      // Calculate Break Duration from pre-fetched data
+      const attendanceLogs = hourlyBreaksByRollcall.get(rollcall._id.toString()) || [];
+      const breakDurationMs = attendanceLogs.reduce((total, log) => {
+        const breakEndTime = log.checkOutTime || Date.now();
+        return total + Math.max(0, breakEndTime - log.checkinTime);
+      }, 0);
+
+      // Work Duration = Total Duration - Break Duration
+      const workDurationMs = Math.max(0, totalDurationMs - breakDurationMs);
+
+      // Convert to Hours
+      const workDurationHours = workDurationMs / (1000 * 60 * 60);
+      const breakDurationHours = breakDurationMs / (1000 * 60 * 60);
+
+      const current = hoursByDate.get(date) || { workDuration: 0, breakDuration: 0 };
+      hoursByDate.set(date, {
+        workDuration: current.workDuration + workDurationHours,
+        breakDuration: current.breakDuration + breakDurationHours
+      });
     }
 
     // Convert to chart format
