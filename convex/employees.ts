@@ -243,22 +243,25 @@ export const getEmployeesWithStatus = query({
       .filter(q => q.lte(q.field("timestamp"), endOfDay))
       .first();
 
-    if (!todayRegisterLog) {
-      // Return employees with no status (register not started)
-      const employees = await ctx.db.query("employees")
-        .filter(q => q.eq(q.field("registerId"), args.registerId))
-        .filter(q => q.eq(q.field("isActive"), true))
-        .collect();
+    // Get employees using index
+    const employees = await ctx.db.query("employees")
+      .withIndex("byRegisterActive", q => q.eq("registerId", args.registerId).eq("isActive", true))
+      .collect();
 
+    const baseEmployee = (employee: typeof employees[0]) => ({
+      id: employee._id,
+      name: employee.name,
+      isManager: employee.isManager,
+      startTime: employee.startTime,
+      endTime: employee.endTime,
+      allowedBreakTime: employee.allowedBreakTime,
+      ratePerDay: employee.ratePerDay,
+      createdAt: employee.createdAt,
+    });
+
+    if (!todayRegisterLog) {
       return employees.map(employee => ({
-        id: employee._id,
-        name: employee.name,
-        isManager: employee.isManager,
-        startTime: employee.startTime,
-        endTime: employee.endTime,
-        allowedBreakTime: employee.allowedBreakTime,
-        ratePerDay: employee.ratePerDay,
-        createdAt: employee.createdAt,
+        ...baseEmployee(employee),
         status: "register_not_started",
         rollcallId: null,
         currentBreakId: null,
@@ -272,96 +275,102 @@ export const getEmployeesWithStatus = query({
       }));
     }
 
-    // Get employees for this register
-    const employees = await ctx.db.query("employees")
-      .filter(q => q.eq(q.field("registerId"), args.registerId))
-      .filter(q => q.eq(q.field("isActive"), true))
+    // Batch: get ALL rollcalls for this register log in one indexed query
+    const allRollcalls = await ctx.db.query("employeeRollcall")
+      .withIndex("byRegisterLog", q => q.eq("registerLogId", todayRegisterLog._id))
       .collect();
 
-    // Get status for each employee
-    const employeesWithStatus = await Promise.all(
-      employees.map(async (employee) => {
-        const rollcall = await ctx.db.query("employeeRollcall")
-          .filter(q => q.eq(q.field("employeeId"), employee._id))
-          .filter(q => q.eq(q.field("registerLogId"), todayRegisterLog._id))
-          .first();
-
-        let status = "not_marked";
-        let rollcallId = rollcall?._id || null;
-        let currentBreakId = null;
-        let breakDuration = null;
-        let breakStartTime = null;
-        let presentTime = null;
-        let absentTime = null;
-        let halfDay = false;
-
-        let usedBreakTime = 0;
-        let breakLogsCount = 0;
-
-        if (rollcall) {
-          halfDay = rollcall.halfDay || false;
-
-          // Calculate total used break time from all logs
-          const allBreaks = await ctx.db.query("attendanceLogs")
-            .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
-            .collect();
-
-          breakLogsCount = allBreaks.length;
-          usedBreakTime = allBreaks.reduce((total, log) => {
-            const endTime = log.checkOutTime || Date.now();
-            return total + (endTime - log.checkinTime);
-          }, 0);
-
-          // Add lateness (time between shop opening and employee arrival) to used break time
-          if (rollcall.presentTime) {
-            const lateness = Math.max(0, rollcall.presentTime - todayRegisterLog.timestamp);
-            usedBreakTime += lateness;
-          }
-
-          if (rollcall.absentTime) {
-            status = "absent";
-            absentTime = rollcall.absentTime;
-          } else if (rollcall.presentTime) {
-            presentTime = rollcall.presentTime;
-
-            // Check for active break
-            const activeBreak = allBreaks.find(log => !log.checkOutTime);
-
-            if (activeBreak) {
-              status = "checkout";
-              currentBreakId = activeBreak._id;
-              breakDuration = Date.now() - activeBreak.checkinTime;
-              breakStartTime = activeBreak.checkinTime;
-            } else {
-              status = "present";
-            }
-          }
-        }
-
-        return {
-          id: employee._id,
-          name: employee.name,
-          isManager: employee.isManager,
-          startTime: employee.startTime,
-          endTime: employee.endTime,
-          allowedBreakTime: employee.allowedBreakTime,
-          ratePerDay: employee.ratePerDay,
-          createdAt: employee.createdAt,
-          status,
-          rollcallId,
-          currentBreakId,
-          breakDuration,
-          breakStartTime,
-          presentTime,
-          absentTime,
-          halfDay,
-          usedBreakTime,
-          breakLogsCount,
-        };
-      })
+    // Map rollcalls by employeeId for O(1) lookup
+    const rollcallByEmployee = new Map(
+      allRollcalls.map(r => [r.employeeId.toString(), r])
     );
 
-    return employeesWithStatus;
+    // Batch: get ALL attendance logs for all rollcalls using indexed queries
+    const allBreaksResults = await Promise.all(
+      allRollcalls.map(async (rollcall) => {
+        const breaks = await ctx.db.query("attendanceLogs")
+          .withIndex("byRollcall", q => q.eq("employeeRollcallId", rollcall._id))
+          .collect();
+        return { rollcallId: rollcall._id.toString(), breaks };
+      })
+    );
+    const breaksByRollcall = new Map(
+      allBreaksResults.map(({ rollcallId, breaks }) => [rollcallId, breaks] as const)
+    );
+
+    // Assemble results in memory — no more per-employee queries
+    return employees.map(employee => {
+      const rollcall = rollcallByEmployee.get(employee._id.toString());
+
+      if (!rollcall) {
+        return {
+          ...baseEmployee(employee),
+          status: "not_marked",
+          rollcallId: null,
+          currentBreakId: null,
+          breakDuration: null,
+          breakStartTime: null,
+          presentTime: null,
+          absentTime: null,
+          halfDay: false,
+          usedBreakTime: 0,
+          breakLogsCount: 0,
+        };
+      }
+
+      const allBreaks = breaksByRollcall.get(rollcall._id.toString()) || [];
+      const halfDay = rollcall.halfDay || false;
+
+      const breakLogsCount = allBreaks.length;
+      let usedBreakTime = allBreaks.reduce((total, log) => {
+        const endTime = log.checkOutTime || Date.now();
+        return total + (endTime - log.checkinTime);
+      }, 0);
+
+      // Add lateness to used break time
+      if (rollcall.presentTime) {
+        const lateness = Math.max(0, rollcall.presentTime - todayRegisterLog.timestamp);
+        usedBreakTime += lateness;
+      }
+
+      let status = "not_marked";
+      let currentBreakId = null;
+      let breakDuration = null;
+      let breakStartTime = null;
+      let presentTime = null;
+      let absentTime = null;
+
+      if (rollcall.absentTime) {
+        status = "absent";
+        absentTime = rollcall.absentTime;
+      } else if (rollcall.presentTime) {
+        presentTime = rollcall.presentTime;
+        const activeBreak = allBreaks.find(log => !log.checkOutTime);
+
+        if (activeBreak) {
+          status = "checkout";
+          currentBreakId = activeBreak._id;
+          breakDuration = Date.now() - activeBreak.checkinTime;
+          breakStartTime = activeBreak.checkinTime;
+        } else {
+          status = "present";
+        }
+      }
+
+      return {
+        ...baseEmployee(employee),
+        status,
+        rollcallId: rollcall._id,
+        currentBreakId,
+        breakDuration,
+        breakStartTime,
+        presentTime,
+        absentTime,
+        halfDay,
+        usedBreakTime,
+        breakLogsCount,
+      };
+    });
   },
 });
 
