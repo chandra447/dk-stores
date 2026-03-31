@@ -51,8 +51,8 @@ function Dashboard() {
   // Combine separate date strings into DateRange
   const dateRange: DateRange | undefined = useMemo(() => {
     if (fromDate && toDate) {
-      const from = new Date(fromDate);
-      const to = new Date(toDate);
+      const from = new Date(fromDate + 'T00:00:00');
+      const to = new Date(toDate + 'T00:00:00');
       if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
         return { from, to };
       }
