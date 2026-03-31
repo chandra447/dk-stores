@@ -175,7 +175,8 @@ export function AttendanceCalendar({ data, dateRange, currentDate, onDayClick }:
                         const style = getStatusStyle(dayData);
                         
                         // Skip days outside the date range
-                        if (dateRange?.from && day < dateRange.from) return null;
+                        if (dateRange?.from && day < dateRange.from)
+                            return <div key={day.toISOString()} className="aspect-square" />;
                         if (dateRange?.to && day > dateRange.to) return null;
 
                         return (
