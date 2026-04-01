@@ -35,7 +35,7 @@ function Dashboard() {
   // Default date range (current month)
   const defaultDateRange = useMemo<DateRange>(() => ({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    to: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
+    to: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59),
   }), []);
 
   // URL-based filters state
@@ -52,7 +52,7 @@ function Dashboard() {
   const dateRange: DateRange | undefined = useMemo(() => {
     if (fromDate && toDate) {
       const from = new Date(fromDate + 'T00:00:00');
-      const to = new Date(toDate + 'T00:00:00');
+      const to = new Date(toDate + 'T23:59:59');
       if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
         return { from, to };
       }

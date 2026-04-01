@@ -81,6 +81,10 @@ export default defineSchema({
     presentTime: v.optional(v.number()),  // When marked present (Unix ms)
     absentTime: v.optional(v.number()),   // When marked absent (Unix ms)
     halfDay: v.optional(v.boolean()),     // Whether this is a half-day attendance
+    // Denormalized break state (avoids querying attendanceLogs on every status check)
+    currentBreakId: v.optional(v.id("attendanceLogs")), // active break, cleared on check-in
+    totalBreakTime: v.optional(v.number()),              // accumulated completed break ms
+    breakLogsCount: v.optional(v.number()),              // count of completed breaks
     createdBy: v.id("users"),             // Who created this record
     createdAt: v.number(),                // Creation timestamp
     updatedAt: v.number(),                // Last update timestamp

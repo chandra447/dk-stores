@@ -285,20 +285,19 @@ export const getEmployeesWithStatus = query({
       allRollcalls.map(r => [r.employeeId.toString(), r])
     );
 
-    // Batch: get ALL attendance logs for all rollcalls using indexed queries
-    const allBreaksResults = await Promise.all(
-      allRollcalls.map(async (rollcall) => {
-        const breaks = await ctx.db.query("attendanceLogs")
-          .withIndex("byRollcall", q => q.eq("employeeRollcallId", rollcall._id))
-          .collect();
-        return { rollcallId: rollcall._id.toString(), breaks };
-      })
-    );
-    const breaksByRollcall = new Map(
-      allBreaksResults.map(({ rollcallId, breaks }) => [rollcallId, breaks] as const)
+    // Fetch ONLY the active break docs (typically 0–5 employees on break at a time)
+    // instead of reading ALL attendance logs for all employees on every call.
+    const activeBreakIds = allRollcalls
+      .filter(r => r.currentBreakId)
+      .map(r => r.currentBreakId!);
+    const activeBreakDocs = await Promise.all(activeBreakIds.map(id => ctx.db.get(id)));
+    const activeBreakMap = new Map(
+      activeBreakDocs
+        .filter(Boolean)
+        .map(b => [b!.employeeRollcallId.toString(), b!])
     );
 
-    // Assemble results in memory — no more per-employee queries
+    // Assemble results in memory — no attendance log table reads needed
     return employees.map(employee => {
       const rollcall = rollcallByEmployee.get(employee._id.toString());
 
@@ -318,14 +317,15 @@ export const getEmployeesWithStatus = query({
         };
       }
 
-      const allBreaks = breaksByRollcall.get(rollcall._id.toString()) || [];
       const halfDay = rollcall.halfDay || false;
+      const breakLogsCount = rollcall.breakLogsCount || 0;
 
-      const breakLogsCount = allBreaks.length;
-      let usedBreakTime = allBreaks.reduce((total, log) => {
-        const endTime = log.checkOutTime || Date.now();
-        return total + (endTime - log.checkinTime);
-      }, 0);
+      // usedBreakTime = completed breaks (denormalized) + ongoing break if active
+      let usedBreakTime = rollcall.totalBreakTime || 0;
+      const activeBreak = activeBreakMap.get(rollcall._id.toString());
+      if (activeBreak) {
+        usedBreakTime += Date.now() - activeBreak.checkinTime;
+      }
 
       // Add lateness to used break time
       if (rollcall.presentTime) {
@@ -345,7 +345,6 @@ export const getEmployeesWithStatus = query({
         absentTime = rollcall.absentTime;
       } else if (rollcall.presentTime) {
         presentTime = rollcall.presentTime;
-        const activeBreak = allBreaks.find(log => !log.checkOutTime);
 
         if (activeBreak) {
           status = "checkout";

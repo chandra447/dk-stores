@@ -173,14 +173,8 @@ export const startEmployeeBreak = mutation({
       throw new Error("Access denied");
     }
 
-    // Check if employee is already on break
-    const activeBreak = await ctx.db.query("attendanceLogs")
-      .filter(q => q.eq(q.field("employeeRollcallId"), args.rollcallId))
-      .filter(q => q.eq(q.field("employeeId"), args.employeeId))
-      .filter(q => q.eq(q.field("checkOutTime"), undefined))
-      .first();
-
-    if (activeBreak) {
+    // Check if employee is already on break using denormalized field (no table scan)
+    if (rollcall.currentBreakId) {
       throw new Error("Employee is already on break");
     }
 
@@ -191,6 +185,12 @@ export const startEmployeeBreak = mutation({
       checkinTime: Date.now(), // Start of break
       createdBy: userId,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Denormalize active break onto rollcall to avoid future table scans
+    await ctx.db.patch(args.rollcallId, {
+      currentBreakId: attendanceLogId,
       updatedAt: Date.now(),
     });
 
@@ -245,10 +245,21 @@ export const endEmployeeBreak = mutation({
       throw new Error("Access denied");
     }
 
+    const checkOutTime = Date.now();
+    const breakDuration = checkOutTime - attendanceLog.checkinTime;
+
     // Update attendance log with checkout time
     await ctx.db.patch(args.attendanceLogId, {
-      checkOutTime: Date.now(),
-      updatedAt: Date.now(),
+      checkOutTime,
+      updatedAt: checkOutTime,
+    });
+
+    // Accumulate break time on rollcall and clear the active break reference
+    await ctx.db.patch(attendanceLog.employeeRollcallId, {
+      currentBreakId: undefined,
+      totalBreakTime: (rollcall.totalBreakTime || 0) + breakDuration,
+      breakLogsCount: (rollcall.breakLogsCount || 0) + 1,
+      updatedAt: checkOutTime,
     });
 
     return args.attendanceLogId;
@@ -688,10 +699,10 @@ export const getEmployeeAttendanceLogs = query({
       throw new Error("Access denied");
     }
 
-    // Get the employee rollcall entry for present time
+    // Get the employee rollcall entry for present time (indexed)
     const rollcall = await ctx.db.query("employeeRollcall")
-      .filter(q => q.eq(q.field("employeeId"), args.employeeId))
-      .filter(q => q.eq(q.field("registerLogId"), args.registerLogId))
+      .withIndex("byEmployeeDate", q =>
+        q.eq("employeeId", args.employeeId).eq("registerLogId", args.registerLogId))
       .first();
 
     // Get all attendance logs for this employee on this date
