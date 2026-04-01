@@ -132,7 +132,7 @@ function Dashboard() {
       .filter((d: any) => d.totalHours > 0)
       .map((d: any) => ({
         ...d,
-        breakDurationMinutes: (d.breakDuration || 0) * 60, // Convert hours to minutes
+        breakDurationMinutes: Math.round((d.breakDuration || 0) * 60 * 100) / 100, // Convert hours to minutes, round to 2dp
         date: format(new Date(d.date), "dd/MM"), // Format date for chart display (2 decimals)
       }));
   }, [hourlyData]);

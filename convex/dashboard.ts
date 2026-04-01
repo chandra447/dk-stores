@@ -233,8 +233,16 @@ export const getDashboardStats = query({
       }
     }
 
+    // Deduplicate register logs by local date (same day opened twice counts as 1)
+    const uniqueRegisterDates = new Set(
+      registerLogs.map(log => {
+        const localTime = log.timestamp - (offset * 60 * 1000);
+        return new Date(localTime).toISOString().split('T')[0];
+      })
+    );
+
     return {
-      registerDays: registerLogs.length,
+      registerDays: uniqueRegisterDates.size,
       presentDays,
       halfDays,
       totalHours: Math.round(totalHours * 100) / 100,
