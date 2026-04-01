@@ -584,15 +584,15 @@ export const deleteEmployee = mutation({
     }
 
     try {
-      // 1. Get all rollcall entries for this employee
+      // 1. Get all rollcall entries for this employee (indexed, not full table scan)
       const rollcallEntries = await ctx.db.query("employeeRollcall")
-        .filter(q => q.eq(q.field("employeeId"), args.employeeId))
+        .withIndex("byEmployeeDate", q => q.eq("employeeId", args.employeeId))
         .collect();
 
       // 2. Delete all attendance logs for this employee (cascade through rollcall entries)
       for (const rollcall of rollcallEntries) {
         const attendanceLogs = await ctx.db.query("attendanceLogs")
-          .filter(q => q.eq(q.field("employeeRollcallId"), rollcall._id))
+          .withIndex("byRollcall", q => q.eq("employeeRollcallId", rollcall._id))
           .collect();
 
         for (const log of attendanceLogs) {
