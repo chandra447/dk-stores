@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, eachMonthOfInterval, isSameMonth, isAfter, isBefore, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, eachMonthOfInterval, isSameMonth, isAfter, isBefore, addMonths, subMonths } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
