@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, getDay, eachMonthOfInterval, isSameMonth, isAfter, isBefore, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, eachMonthOfInterval, isSameMonth, isAfter, isBefore, addMonths, subMonths } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -56,12 +56,8 @@ export function AttendanceCalendar({ data, dateRange, currentDate, onDayClick }:
 
         if (dayData) return dayData;
 
-        const dayOfWeek = getDay(date);
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-            return { status: 'weekend' as const, date: dateStr };
-        }
-
-        return { status: 'absent' as const, date: dateStr };
+        // No data = shop was closed that day
+        return { status: 'weekend' as const, date: dateStr };
     };
 
     const getStatusStyle = (dayData: any) => {
@@ -223,7 +219,7 @@ export function AttendanceCalendar({ data, dateRange, currentDate, onDayClick }:
                         <div className="w-3 h-3 rounded bg-red-100 border border-red-200" /> Absent
                     </div>
                     <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 rounded bg-gray-100 border border-gray-200" /> Weekend
+                        <div className="w-3 h-3 rounded bg-gray-100 border border-gray-200" /> Closed
                     </div>
                 </div>
             </CardContent>

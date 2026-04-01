@@ -210,9 +210,21 @@ export const getDashboardStats = query({
           totalHours += Math.max(0, hoursWorked);
 
           // Calculate break time usage from pre-fetched data
+          // Cap unclosed breaks at the employee's shift end time (not Date.now())
+          // to prevent hanging logs from inflating break durations
           const attendanceLogs = breaksByRollcall.get(rollcall._id.toString()) || [];
           const employeeBreakTime = attendanceLogs.reduce((total, log) => {
-            const breakEndTime = log.checkOutTime || Date.now();
+            let breakEndTime = log.checkOutTime;
+            if (!breakEndTime) {
+              const breakDate = new Date(log.checkinTime);
+              const shiftEnd = new Date(breakDate);
+              shiftEnd.setHours(
+                Math.floor(employee.endTime / (1000 * 60 * 60)),
+                Math.floor((employee.endTime % (1000 * 60 * 60)) / (1000 * 60)),
+                0, 0
+              );
+              breakEndTime = shiftEnd.getTime();
+            }
             return total + (breakEndTime - log.checkinTime);
           }, 0);
 
@@ -352,6 +364,35 @@ export const getContributionData = query({
             employeeId: rollcall.employeeId,
             rollcallId: rollcall._id,
             halfDay: rollcall.halfDay || false // Include half-day flag
+          });
+        }
+      }
+    }
+
+    // Add absent entries for register open days with no rollcall for this employee
+    if (args.registerId) {
+      const registerLogs = await ctx.db.query("registerLogs")
+        .withIndex("byRegisterDate", q => q.eq("registerId", args.registerId!))
+        .filter(q =>
+          q.and(
+            q.gte(q.field("timestamp"), startDateUTC),
+            q.lte(q.field("timestamp"), endDateUTC)
+          )
+        )
+        .collect();
+
+      for (const regLog of registerLogs) {
+        const localTime = regLog.timestamp - (offset * 60 * 1000);
+        const date = new Date(localTime).toISOString().split('T')[0];
+        if (!dataByDate.has(date)) {
+          dataByDate.set(date, {
+            date,
+            count: 0,
+            level: 0,
+            intensity: 0,
+            registerLogId: regLog._id,
+            employeeId: args.employeeId,
+            halfDay: false
           });
         }
       }
@@ -543,9 +584,20 @@ export const getHourlyData = query({
       const totalDurationMs = Math.max(0, endTime - rollcall.presentTime!);
 
       // Calculate Break Duration from pre-fetched data
+      // Cap unclosed breaks at the employee's shift end time on that day
       const attendanceLogs = hourlyBreaksByRollcall.get(rollcall._id.toString()) || [];
       const breakDurationMs = attendanceLogs.reduce((total, log) => {
-        const breakEndTime = log.checkOutTime || Date.now();
+        let breakEndTime = log.checkOutTime;
+        if (!breakEndTime) {
+          const breakDate = new Date(log.checkinTime);
+          const shiftEnd = new Date(breakDate);
+          shiftEnd.setHours(
+            Math.floor(employee.endTime / (1000 * 60 * 60)),
+            Math.floor((employee.endTime % (1000 * 60 * 60)) / (1000 * 60)),
+            0, 0
+          );
+          breakEndTime = shiftEnd.getTime();
+        }
         return total + Math.max(0, breakEndTime - log.checkinTime);
       }, 0);
 
