@@ -444,11 +444,6 @@ function RegisterDetail() {
       return;
     }
 
-    if (editFormData.isManager && !editFormData.pin.trim()) {
-      setError('Manager PIN is required for manager employees');
-      return;
-    }
-
     if (editFormData.pin && editFormData.pin.length !== 4) {
       setError('Manager PIN must be 4 digits');
       return;

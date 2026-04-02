@@ -293,7 +293,7 @@ export const getEmployeesWithStatus = query({
     const activeBreakDocs = await Promise.all(activeBreakIds.map(id => ctx.db.get(id)));
     const activeBreakMap = new Map(
       activeBreakDocs
-        .filter(Boolean)
+        .filter(b => b && b.checkOutTime === undefined)  // Only truly active (unclosed) breaks
         .map(b => [b!.employeeRollcallId.toString(), b!])
     );
 

@@ -112,11 +112,39 @@ export const markEmployeeAbsent = mutation({
       .first();
 
     if (existingRollcall) {
-      // Update existing rollcall to mark as absent
-      await ctx.db.patch(existingRollcall._id, {
-        absentTime: Date.now(),
-        updatedAt: Date.now(),
-      });
+      const now = Date.now();
+
+      // If employee is currently on break, close it before marking absent
+      if (existingRollcall.currentBreakId) {
+        const activeBreak = await ctx.db.get(existingRollcall.currentBreakId);
+        if (activeBreak && activeBreak.checkOutTime === undefined) {
+          await ctx.db.patch(existingRollcall.currentBreakId, {
+            checkOutTime: now,
+            updatedAt: now,
+          });
+          const breakDuration = now - activeBreak.checkinTime;
+          await ctx.db.patch(existingRollcall._id, {
+            absentTime: now,
+            currentBreakId: undefined,
+            totalBreakTime: (existingRollcall.totalBreakTime || 0) + breakDuration,
+            breakLogsCount: (existingRollcall.breakLogsCount || 0) + 1,
+            updatedAt: now,
+          });
+        } else {
+          // Stale pointer — clear it along with marking absent
+          await ctx.db.patch(existingRollcall._id, {
+            absentTime: now,
+            currentBreakId: undefined,
+            updatedAt: now,
+          });
+        }
+      } else {
+        await ctx.db.patch(existingRollcall._id, {
+          absentTime: now,
+          updatedAt: now,
+        });
+      }
+
       return existingRollcall._id;
     }
 
@@ -174,8 +202,14 @@ export const startEmployeeBreak = mutation({
     }
 
     // Check if employee is already on break using denormalized field (no table scan)
+    // Also verify the referenced break is truly active (guards against stale pointer)
     if (rollcall.currentBreakId) {
-      throw new Error("Employee is already on break");
+      const existingBreak = await ctx.db.get(rollcall.currentBreakId);
+      if (existingBreak && existingBreak.checkOutTime === undefined) {
+        throw new Error("Employee is already on break");
+      }
+      // Stale pointer — clean it up and allow a new break to start
+      await ctx.db.patch(args.rollcallId, { currentBreakId: undefined, updatedAt: Date.now() });
     }
 
     // Create new attendance log entry (break start)
@@ -216,6 +250,14 @@ export const endEmployeeBreak = mutation({
     }
 
     if (attendanceLog.checkOutTime !== undefined) {
+      // Self-heal: clear stale currentBreakId on the rollcall if it still points here
+      const staleRollcall = await ctx.db.get(attendanceLog.employeeRollcallId);
+      if (staleRollcall?.currentBreakId?.toString() === args.attendanceLogId.toString()) {
+        await ctx.db.patch(attendanceLog.employeeRollcallId, {
+          currentBreakId: undefined,
+          updatedAt: Date.now(),
+        });
+      }
       throw new Error("Break has already ended");
     }
 
