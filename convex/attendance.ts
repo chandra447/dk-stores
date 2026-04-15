@@ -702,6 +702,25 @@ export const updateAttendanceLog = mutation({
       updatedAt: now,
     });
 
+    // Recalculate denormalized rollcall fields from source-of-truth logs
+    // (editing a log's times can change totalBreakTime, breakLogsCount, currentBreakId)
+    const allLogs = await ctx.db.query("attendanceLogs")
+      .withIndex("byRollcall", q => q.eq("employeeRollcallId", attendanceLog.employeeRollcallId))
+      .collect();
+
+    const completedLogs = allLogs.filter(l => l.checkOutTime !== undefined);
+    const newTotalBreakTime = completedLogs.reduce(
+      (total, l) => total + (l.checkOutTime! - l.checkinTime), 0
+    );
+    const activeLog = allLogs.find(l => l.checkOutTime === undefined);
+
+    await ctx.db.patch(attendanceLog.employeeRollcallId, {
+      totalBreakTime: newTotalBreakTime,
+      breakLogsCount: completedLogs.length,
+      currentBreakId: activeLog?._id,
+      updatedAt: now,
+    });
+
     return args.attendanceLogId;
   },
 });
