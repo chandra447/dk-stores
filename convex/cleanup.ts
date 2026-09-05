@@ -1,6 +1,8 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internalMutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 /**
@@ -11,70 +13,82 @@ import { getAuthUserId } from "@convex-dev/auth/server";
  * (dashboard month queries, today's-log lookups) and counts toward
  * database I/O + storage billing.
  *
- * Two entry points share one batch worker:
- * - `deleteOldData` (admin-only): manual/backfill runs with an explicit cutoff.
- * - `retentionSweep` (scheduler-only): monthly cron with a rolling 6-month
- *   cutoff. Schedulers carry no user identity; this stays safe because
- *   `internal.*` is unreachable from client code, the batch is capped, and
- *   an implausible backlog aborts instead of deleting.
+ * Three entry points share one batch worker:
+ * - `countOldData` (admin-only query): paginated dry run. Sum page totals
+ *   until `isDone`, passing back `continueCursor`.
+ * - `deleteOldData` (internal): manual/backfill runs with an explicit cutoff.
+ *   No auth check — `internal.*` is unreachable from client code (precedent:
+ *   linkEmployeeToUser), and schedulers/CLI carry no Convex Auth identity.
+ *   The cutoff-must-be-past guard is the backstop against a wrong-arg wipe.
+ * - `retentionSweep` (internal, scheduler-only): monthly cron with a rolling
+ *   6-month cutoff. One batch per transaction, chained via the scheduler
+ *   until done or the chain budget runs out.
  */
 const SIX_MONTHS_MS = 183 * 24 * 60 * 60 * 1000;
-const SWEEP_BATCH = 200;
+const SWEEP_BATCH = 50;
+const MAX_SWEEP_CHAIN = 20;
 const SAFETY_MAX_LOGS = 5000;
 
 // Count docs older than `cutoff` (unix ms) without deleting anything.
+// Paginated: one page of parent logs plus bounded child counts per call.
+// Collecting the whole backlog at once (Promise.all per log and per rollcall)
+// exceeds Convex concurrent-IO budgets on exactly the datasets this exists to
+// measure. Sum page totals until `isDone`, passing back `continueCursor`.
 export const countOldData = query({
-  args: { cutoff: v.number() },
+  args: {
+    cutoff: v.number(),
+    paginationOpts: v.optional(paginationOptsValidator),
+  },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
     const user = await ctx.db.get(userId);
     if (user?.role !== "admin") throw new Error("Admin only");
 
-    const oldLogs = await ctx.db
+    const page = await ctx.db
       .query("registerLogs")
       .withIndex("byDate", (q) => q.lt("timestamp", args.cutoff))
-      .collect();
+      .order("asc")
+      .paginate(args.paginationOpts ?? { numItems: 50, cursor: null });
 
-    const oldRollcallsNested = await Promise.all(
-      oldLogs.map((log) =>
-        ctx.db
-          .query("employeeRollcall")
-          .withIndex("byRegisterLog", (q) => q.eq("registerLogId", log._id))
-          .collect()
-      )
-    );
-    const oldRollcalls = oldRollcallsNested.flat();
-
-    const oldBreaksNested = await Promise.all(
-      oldRollcalls.map((rollcall) =>
-        ctx.db
+    // Sequential on purpose: bounded reads per call, no concurrent-IO burst.
+    let employeeRollcall = 0;
+    let attendanceLogs = 0;
+    for (const log of page.page) {
+      const rollcalls = await ctx.db
+        .query("employeeRollcall")
+        .withIndex("byRegisterLog", (q) => q.eq("registerLogId", log._id))
+        .collect();
+      employeeRollcall += rollcalls.length;
+      for (const rollcall of rollcalls) {
+        const breaks = await ctx.db
           .query("attendanceLogs")
           .withIndex("byRollcall", (q) =>
             q.eq("employeeRollcallId", rollcall._id)
           )
-          .collect()
-      )
-    );
-    const oldBreaksCount = oldBreaksNested.reduce(
-      (sum, logs) => sum + logs.length,
-      0
-    );
+          .collect();
+        attendanceLogs += breaks.length;
+      }
+    }
 
     return {
       cutoff: args.cutoff,
-      registerLogs: oldLogs.length,
-      employeeRollcall: oldRollcalls.length,
-      attendanceLogs: oldBreaksCount,
+      registerLogs: page.page.length,
+      employeeRollcall,
+      attendanceLogs,
+      isDone: page.isDone,
+      continueCursor: page.continueCursor,
     };
   },
 });
 
 // Deletes one bounded batch of pre-cutoff shop data, oldest first, in
 // dependency order (breaks -> rollcalls -> register logs). Shared by the
-// manual admin entry point and the scheduled sweep.
+// manual entry point and the scheduled sweep. The parent cap is deliberately
+// small: children fan out per parent inside a single transaction, so the
+// budget that matters is total reads+writes, not parent count.
 async function deleteOldBatch(ctx: MutationCtx, cutoff: number, limit?: number) {
-  const capped = Math.min(limit ?? 200, 500);
+  const capped = Math.min(limit ?? 50, 100);
   let deletedRegisterLogs = 0;
   let deletedRollcalls = 0;
   let deletedBreaks = 0;
@@ -122,51 +136,62 @@ async function deleteOldBatch(ctx: MutationCtx, cutoff: number, limit?: number) 
   };
 }
 
-// Manual entry point: one bounded batch. Admin-only. Repeat until `hasMore`
-// is false.
+// Backstop against a wrong cutoff: an implausibly large backlog aborts loudly
+// instead of wiping the tables. Shared by the manual and scheduled paths.
+async function assertBacklogWithinSafety(ctx: MutationCtx, cutoff: number) {
+  const probe = await ctx.db
+    .query("registerLogs")
+    .withIndex("byDate", (q) => q.lt("timestamp", cutoff))
+    .take(SAFETY_MAX_LOGS + 1);
+  if (probe.length > SAFETY_MAX_LOGS) {
+    throw new Error(
+      `Retention aborted: backlog exceeds safety bound ${SAFETY_MAX_LOGS} register logs`
+    );
+  }
+}
+
+// Manual entry point: one bounded batch. Repeat until `hasMore` is false.
 export const deleteOldData = internalMutation({
   args: {
     cutoff: v.number(),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Not authenticated");
-    const user = await ctx.db.get(userId);
-    if (user?.role !== "admin") throw new Error("Admin only");
-
+    if (args.cutoff >= Date.now()) {
+      throw new Error("Refusing to delete with a cutoff in the future");
+    }
+    await assertBacklogWithinSafety(ctx, args.cutoff);
     return deleteOldBatch(ctx, args.cutoff, args.limit);
   },
 });
 
 // Monthly cron entry point (see convex/crons.ts). Schedulers carry no user
 // identity, so there is no admin check here — safety comes from the internal
-// boundary, the batch cap, and the backlog guardrail below.
+// boundary, the batch/chain caps, and the shared backlog guardrail.
 //
-// One batch per run: steady state adds ~30 days of newly-aged logs a month,
-// well under the batch cap, so the cron trickles while the manual
-// `deleteOldData` covers any historical backfill. A leftover `hasMore` is
-// picked up by next month's run and is visible in the cron logs.
+// One batch = one transaction; follow-ups chain via the scheduler until done
+// or the budget runs out (50 logs x 20 = 1000 logs max per monthly run,
+// far above steady-state aging, bounded against a wrong-cutoff wipe).
 export const retentionSweep = internalMutation({
   args: {
     cutoff: v.optional(v.number()),
+    batchesRemaining: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const cutoff = args.cutoff ?? Date.now() - SIX_MONTHS_MS;
+    const budget = args.batchesRemaining ?? MAX_SWEEP_CHAIN;
 
-    // Guardrail: an implausibly large backlog means a wrong cutoff — abort
-    // loudly (cron error log) instead of wiping the tables.
-    const backlogProbe = await ctx.db
-      .query("registerLogs")
-      .withIndex("byDate", (q) => q.lt("timestamp", cutoff))
-      .take(SAFETY_MAX_LOGS + 1);
-    if (backlogProbe.length > SAFETY_MAX_LOGS) {
-      throw new Error(
-        `Retention sweep aborted: backlog exceeds safety bound ${SAFETY_MAX_LOGS} register logs`
-      );
-    }
+    await assertBacklogWithinSafety(ctx, cutoff);
 
     const result = await deleteOldBatch(ctx, cutoff, SWEEP_BATCH);
-    return { cutoff, ...result };
+
+    let scheduledFollowUp = false;
+    if (result.hasMore && budget > 1) {
+      // @ts-ignore Convex function-reference inference exceeds repo tsc depth limits (see crons.ts); runtime binding is validated by Convex.
+      await ctx.scheduler.runAfter(60 * 1000, internal.cleanup.retentionSweep, { cutoff, batchesRemaining: budget - 1 });
+      scheduledFollowUp = true;
+    }
+
+    return { cutoff, ...result, scheduledFollowUp };
   },
 });
