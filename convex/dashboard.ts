@@ -35,21 +35,21 @@ export const getDashboardStats = query({
       }
     } else {
       // Get all registers the user has access to (admin: all, manager: assigned)
-      const user = await ctx.db.query("users").filter(q => q.eq(q.field("_id"), userId)).first();
+      const user = await ctx.db.get(userId);
       if (!user) {
         throw new Error("User not found");
       }
 
       if (user.role === "admin") {
         accessibleRegisters = await ctx.db.query("registers")
-          .filter(q => q.eq(q.field("isActive"), true))
+          .withIndex("byActive", q => q.eq("isActive", true))
           .collect();
       } else {
         // Manager - get registers where they are assigned as manager
         const managerEmployees = await ctx.db.query("employees")
+          .withIndex("byUser", q => q.eq("userId", userId))
           .filter(q =>
             q.and(
-              q.eq(q.field("userId"), userId),
               q.eq(q.field("isManager"), true),
               q.eq(q.field("isActive"), true)
             )
@@ -84,33 +84,41 @@ export const getDashboardStats = query({
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get register logs in the date range (using UTC-converted dates)
-    const registerLogs = await ctx.db.query("registerLogs")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("timestamp"), startDateUTC),
-          q.lte(q.field("timestamp"), endDateUTC),
-          ...registerIds.map(id => q.eq(q.field("registerId"), id))
-        )
-      )
-      .collect();
-
-    // Get employees to filter by if specified
-    let employeeIds = [];
-    if (args.employeeId) {
-      employeeIds = [args.employeeId];
-    } else {
-      // Get all employees for the accessible registers
-      const employees = await ctx.db.query("employees")
-        .filter(q =>
-          q.and(
-            q.eq(q.field("isActive"), true),
-            ...registerIds.map(id => q.eq(q.field("registerId"), id))
+    // Get register logs in the date range via the byRegisterDate index (one range
+    // query per register). The previous filter AND-ed one registerId eq per
+    // register, which can never match when the user has more than one register.
+    const registerLogsNested = await Promise.all(
+      registerIds.map(registerId =>
+        ctx.db.query("registerLogs")
+          .withIndex("byRegisterDate", q =>
+            q.eq("registerId", registerId)
+              .gte("timestamp", startDateUTC)
+              .lte("timestamp", endDateUTC)
           )
+          .collect()
+      )
+    );
+    const registerLogs = registerLogsNested.flat();
+
+    // Get all employees for the accessible registers via the byRegisterActive
+    // index. Fetched once here and reused for wage calculation below.
+    let employees: any[] = [];
+    if (args.employeeId) {
+      const employee = await ctx.db.get(args.employeeId);
+      if (employee) employees = [employee];
+    } else {
+      const employeesNested = await Promise.all(
+        registerIds.map(registerId =>
+          ctx.db.query("employees")
+            .withIndex("byRegisterActive", q =>
+              q.eq("registerId", registerId).eq("isActive", true)
+            )
+            .collect()
         )
-        .collect();
-      employeeIds = employees.map(emp => emp._id);
+      );
+      employees = employeesNested.flat();
     }
+    const employeeIds = employees.map(emp => emp._id);
 
     if (employeeIds.length === 0) {
       return {
@@ -126,16 +134,18 @@ export const getDashboardStats = query({
       };
     }
 
-    // Get rollcall entries for the date range (using UTC-converted dates)
-    const rollcallEntries = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    // Get rollcall entries for the date range via the byDate index, scoped to
+    // this user's registers (previously an unscoped full-table scan).
+    const registerLogIds = new Set(registerLogs.map(l => l._id.toString()));
+    const rollcallEntries = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r =>
+      registerLogIds.has(r.registerLogId.toString()) &&
+      (!args.employeeId || r.employeeId.toString() === args.employeeId.toString())
+    );
 
     // Calculate statistics
     let presentDays = 0;
@@ -145,22 +155,7 @@ export const getDashboardStats = query({
     let totalHalfDayWage = 0;
     let totalBreakTime = 0;
 
-    // Get employee details for wage calculation
-    let employees: any[] = [];
-    if (args.employeeId) {
-      const employee = await ctx.db.get(args.employeeId);
-      if (employee) employees = [employee];
-    } else {
-      // Get all employees for the accessible registers
-      employees = await ctx.db.query("employees")
-        .filter(q =>
-          q.and(
-            q.eq(q.field("isActive"), true),
-            ...registerIds.map(id => q.eq(q.field("registerId"), id))
-          )
-        )
-        .collect();
-    }
+    // Employee details were fetched above and reused here for wage calculation.
 
     const employeeRates = new Map();
     employees.forEach(emp => {
@@ -290,16 +285,12 @@ export const getContributionData = query({
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get rollcall entries (using UTC-converted dates)
-    const rollcalls = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    const rollcalls = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r => !args.employeeId || r.employeeId.toString() === args.employeeId.toString());
 
     // Get employee details for intensity calculation
     const employeeIds = [...new Set(rollcalls.map(r => r.employeeId.toString()))];
@@ -525,16 +516,12 @@ export const getHourlyData = query({
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get rollcall entries (using UTC-converted dates)
-    const rollcalls = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    const rollcalls = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r => !args.employeeId || r.employeeId.toString() === args.employeeId.toString());
 
     // Get employee details for end times
     const employeeIds = [...new Set(rollcalls.map(r => r.employeeId.toString()))];
