@@ -238,9 +238,11 @@ export const getEmployeesWithStatus = query({
     }
 
     const todayRegisterLog = await ctx.db.query("registerLogs")
-      .filter(q => q.eq(q.field("registerId"), args.registerId))
-      .filter(q => q.gte(q.field("timestamp"), startOfDay))
-      .filter(q => q.lte(q.field("timestamp"), endOfDay))
+      .withIndex("byRegisterDate", q =>
+        q.eq("registerId", args.registerId)
+          .gte("timestamp", startOfDay)
+          .lte("timestamp", endOfDay)
+      )
       .first();
 
     // Get employees using index
@@ -645,22 +647,22 @@ export const getEmployeesByRegister = query({
 
     let employees: any[] = [];
 
-    if (args.registerId) {
+    const registerId = args.registerId;
+    if (registerId) {
       // Check access to the register
-      const hasAccess = await hasRegisterAccess(ctx, args.registerId, userId);
+      const hasAccess = await hasRegisterAccess(ctx, registerId, userId);
       if (!hasAccess) {
         return [];
       }
 
       employees = await ctx.db.query("employees")
-        .filter(q => q.and(
-          q.eq(q.field("registerId"), args.registerId),
-          q.eq(q.field("isActive"), true)
-        ))
+        .withIndex("byRegisterActive", q =>
+          q.eq("registerId", registerId).eq("isActive", true)
+        )
         .collect();
     } else {
       // Get employees for all registers the user has access to
-      const user = await ctx.db.query("users").filter(q => q.eq(q.field("_id"), userId)).first();
+      const user = await ctx.db.get(userId);
       if (!user) {
         return [];
       }
@@ -682,10 +684,9 @@ export const getEmployeesByRegister = query({
 
         if (managerEmployee && managerEmployee.registerId) {
           employees = await ctx.db.query("employees")
-            .filter(q => q.and(
-              q.eq(q.field("registerId"), managerEmployee.registerId),
-              q.eq(q.field("isActive"), true)
-            ))
+            .withIndex("byRegisterActive", q =>
+              q.eq("registerId", managerEmployee.registerId).eq("isActive", true)
+            )
             .collect();
         }
       }

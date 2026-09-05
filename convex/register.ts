@@ -115,7 +115,7 @@ export const getMyRegisters = query({
 
     // Get registers owned by this user (admin/owner) - FIXED: Only show owned registers
     const ownedRegisters = await ctx.db.query("registers")
-      .filter(q => q.eq(q.field("ownerId"), userId))
+      .withIndex("byOwner", q => q.eq("ownerId", userId))
       .filter(q => q.eq(q.field("isActive"), true))
       .collect();
 
@@ -149,9 +149,11 @@ export const getMyRegisters = query({
 
         // Get today's register log
         const registerLog = await ctx.db.query("registerLogs")
-          .filter(q => q.eq(q.field("registerId"), assignedRegister._id))
-          .filter(q => q.gte(q.field("timestamp"), startOfDay))
-          .filter(q => q.lte(q.field("timestamp"), endOfDay))
+          .withIndex("byRegisterDate", q =>
+            q.eq("registerId", assignedRegister._id)
+              .gte("timestamp", startOfDay)
+              .lte("timestamp", endOfDay)
+          )
           .first();
 
         if (registerLog) {
@@ -304,9 +306,11 @@ export const getTodayRegisterLog = query({
     }
 
     const registerLog = await ctx.db.query("registerLogs")
-      .filter(q => q.eq(q.field("registerId"), args.registerId))
-      .filter(q => q.gte(q.field("timestamp"), startOfDay))
-      .filter(q => q.lte(q.field("timestamp"), endOfDay))
+      .withIndex("byRegisterDate", q =>
+        q.eq("registerId", args.registerId)
+          .gte("timestamp", startOfDay)
+          .lte("timestamp", endOfDay)
+      )
       .first();
 
     return registerLog;
@@ -376,10 +380,8 @@ export const getAccessibleRegisters = query({
 
     // Get registers owned by this user (admin/owner)
     const registers = await ctx.db.query("registers")
-      .filter(q => q.and(
-        q.eq(q.field("ownerId"), userId),
-        q.eq(q.field("isActive"), true)
-      ))
+      .withIndex("byOwner", q => q.eq("ownerId", userId))
+      .filter(q => q.eq(q.field("isActive"), true))
       .collect();
 
     return registers.map(register => ({

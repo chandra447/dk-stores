@@ -1,7 +1,74 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { hasRegisterAccess } from "./register";
+
+// Register ids the caller may see: the requested register, or every
+// active/assigned register. Shared by stats and charts so all three agree on
+// scope. Drops stale references (a manager row pointing at a deleted register
+// yields no id instead of throwing on null).
+async function getScopedRegisterIds(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  registerId?: Id<"registers">
+): Promise<Id<"registers">[]> {
+  if (registerId) {
+    const register = await ctx.db.get(registerId);
+    return register ? [register._id] : [];
+  }
+  const user = await ctx.db.get(userId);
+  if (!user) return [];
+  if (user.role === "admin") {
+    const registers = await ctx.db
+      .query("registers")
+      .withIndex("byActive", (q) => q.eq("isActive", true))
+      .collect();
+    return registers.map((r) => r._id);
+  }
+  // Manager - registers where they are assigned as manager.
+  const managerEmployees = await ctx.db
+    .query("employees")
+    .withIndex("byUser", (q) => q.eq("userId", userId))
+    .filter((q) =>
+      q.and(q.eq(q.field("isManager"), true), q.eq(q.field("isActive"), true))
+    )
+    .collect();
+  const assignedIds = [
+    ...new Set(managerEmployees.map((emp) => emp.registerId.toString())),
+  ];
+  const registers = await Promise.all(
+    assignedIds.map((id) => ctx.db.get(id as Id<"registers">))
+  );
+  return registers.flatMap((r) => (r ? [r._id] : []));
+}
+
+// Register-log ids in scope for a date range, via the byRegisterDate index
+// (one range query per register). Charts filter rollcalls against this set.
+async function getScopedLogIds(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  registerId: Id<"registers"> | undefined,
+  startDateUTC: number,
+  endDateUTC: number
+): Promise<Set<string>> {
+  const registerIds = await getScopedRegisterIds(ctx, userId, registerId);
+  const logsNested = await Promise.all(
+    registerIds.map((id) =>
+      ctx.db
+        .query("registerLogs")
+        .withIndex("byRegisterDate", (q) =>
+          q
+            .eq("registerId", id)
+            .gte("timestamp", startDateUTC)
+            .lte("timestamp", endDateUTC)
+        )
+        .collect()
+    )
+  );
+  return new Set(logsNested.flat().map((l) => l._id.toString()));
+}
 
 // Get dashboard statistics for a date range
 export const getDashboardStats = query({
@@ -26,44 +93,10 @@ export const getDashboardStats = query({
       }
     }
 
-    // Get all registers the user has access to if no specific register is provided
-    let accessibleRegisters: any[] = [];
-    if (args.registerId) {
-      const register = await ctx.db.get(args.registerId);
-      if (register) {
-        accessibleRegisters = [register];
-      }
-    } else {
-      // Get all registers the user has access to (admin: all, manager: assigned)
-      const user = await ctx.db.query("users").filter(q => q.eq(q.field("_id"), userId)).first();
-      if (!user) {
-        throw new Error("User not found");
-      }
+    // Registers in scope (requested register, or every active/assigned one).
+    const registerIds = await getScopedRegisterIds(ctx, userId, args.registerId);
 
-      if (user.role === "admin") {
-        accessibleRegisters = await ctx.db.query("registers")
-          .filter(q => q.eq(q.field("isActive"), true))
-          .collect();
-      } else {
-        // Manager - get registers where they are assigned as manager
-        const managerEmployees = await ctx.db.query("employees")
-          .filter(q =>
-            q.and(
-              q.eq(q.field("userId"), userId),
-              q.eq(q.field("isManager"), true),
-              q.eq(q.field("isActive"), true)
-            )
-          )
-          .collect();
-
-        const registerIds = [...new Set(managerEmployees.map(emp => emp.registerId.toString()))];
-        accessibleRegisters = await Promise.all(
-          registerIds.map(id => ctx.db.get(id as any))
-        );
-      }
-    }
-
-    if (accessibleRegisters.length === 0) {
+    if (registerIds.length === 0) {
       return {
         registerDays: 0,
         presentDays: 0,
@@ -77,40 +110,46 @@ export const getDashboardStats = query({
       };
     }
 
-    const registerIds = accessibleRegisters.map(r => r._id);
-
     // Convert client date range to UTC for consistent filtering
     const offset = args.timezoneOffset || 0;
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get register logs in the date range (using UTC-converted dates)
-    const registerLogs = await ctx.db.query("registerLogs")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("timestamp"), startDateUTC),
-          q.lte(q.field("timestamp"), endDateUTC),
-          ...registerIds.map(id => q.eq(q.field("registerId"), id))
-        )
-      )
-      .collect();
-
-    // Get employees to filter by if specified
-    let employeeIds = [];
-    if (args.employeeId) {
-      employeeIds = [args.employeeId];
-    } else {
-      // Get all employees for the accessible registers
-      const employees = await ctx.db.query("employees")
-        .filter(q =>
-          q.and(
-            q.eq(q.field("isActive"), true),
-            ...registerIds.map(id => q.eq(q.field("registerId"), id))
+    // Get register logs in the date range via the byRegisterDate index (one range
+    // query per register). The previous filter AND-ed one registerId eq per
+    // register, which can never match when the user has more than one register.
+    const registerLogsNested = await Promise.all(
+      registerIds.map(registerId =>
+        ctx.db.query("registerLogs")
+          .withIndex("byRegisterDate", q =>
+            q.eq("registerId", registerId)
+              .gte("timestamp", startDateUTC)
+              .lte("timestamp", endDateUTC)
           )
+          .collect()
+      )
+    );
+    const registerLogs = registerLogsNested.flat();
+
+    // Get all employees for the accessible registers via the byRegisterActive
+    // index. Fetched once here and reused for wage calculation below.
+    let employees: any[] = [];
+    if (args.employeeId) {
+      const employee = await ctx.db.get(args.employeeId);
+      if (employee) employees = [employee];
+    } else {
+      const employeesNested = await Promise.all(
+        registerIds.map(registerId =>
+          ctx.db.query("employees")
+            .withIndex("byRegisterActive", q =>
+              q.eq("registerId", registerId).eq("isActive", true)
+            )
+            .collect()
         )
-        .collect();
-      employeeIds = employees.map(emp => emp._id);
+      );
+      employees = employeesNested.flat();
     }
+    const employeeIds = employees.map(emp => emp._id);
 
     if (employeeIds.length === 0) {
       return {
@@ -126,16 +165,18 @@ export const getDashboardStats = query({
       };
     }
 
-    // Get rollcall entries for the date range (using UTC-converted dates)
-    const rollcallEntries = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    // Get rollcall entries for the date range via the byDate index, scoped to
+    // this user's registers (previously an unscoped full-table scan).
+    const registerLogIds = new Set(registerLogs.map(l => l._id.toString()));
+    const rollcallEntries = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r =>
+      registerLogIds.has(r.registerLogId.toString()) &&
+      (!args.employeeId || r.employeeId.toString() === args.employeeId.toString())
+    );
 
     // Calculate statistics
     let presentDays = 0;
@@ -145,22 +186,7 @@ export const getDashboardStats = query({
     let totalHalfDayWage = 0;
     let totalBreakTime = 0;
 
-    // Get employee details for wage calculation
-    let employees: any[] = [];
-    if (args.employeeId) {
-      const employee = await ctx.db.get(args.employeeId);
-      if (employee) employees = [employee];
-    } else {
-      // Get all employees for the accessible registers
-      employees = await ctx.db.query("employees")
-        .filter(q =>
-          q.and(
-            q.eq(q.field("isActive"), true),
-            ...registerIds.map(id => q.eq(q.field("registerId"), id))
-          )
-        )
-        .collect();
-    }
+    // Employee details were fetched above and reused here for wage calculation.
 
     const employeeRates = new Map();
     employees.forEach(emp => {
@@ -290,16 +316,19 @@ export const getContributionData = query({
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get rollcall entries (using UTC-converted dates)
-    const rollcalls = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    // Scope rollcalls to visible registers via their logs (same scope as the
+    // stats cards; previously charts scanned every register's history).
+    const scopedLogIds = await getScopedLogIds(ctx, userId, args.registerId, startDateUTC, endDateUTC);
+
+    const rollcalls = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r =>
+      scopedLogIds.has(r.registerLogId.toString()) &&
+      (!args.employeeId || r.employeeId.toString() === args.employeeId.toString())
+    );
 
     // Get employee details for intensity calculation
     const employeeIds = [...new Set(rollcalls.map(r => r.employeeId.toString()))];
@@ -379,13 +408,12 @@ export const getContributionData = query({
 
     // Add absent entries for register open days with no rollcall for this employee
     if (args.registerId) {
+      // Timestamp range lives in the index, not a post-scan JS filter.
       const registerLogs = await ctx.db.query("registerLogs")
-        .withIndex("byRegisterDate", q => q.eq("registerId", args.registerId!))
-        .filter(q =>
-          q.and(
-            q.gte(q.field("timestamp"), startDateUTC),
-            q.lte(q.field("timestamp"), endDateUTC)
-          )
+        .withIndex("byRegisterDate", q =>
+          q.eq("registerId", args.registerId!)
+            .gte("timestamp", startDateUTC)
+            .lte("timestamp", endDateUTC)
         )
         .collect();
 
@@ -525,16 +553,18 @@ export const getHourlyData = query({
     const startDateUTC = args.startDate - (offset * 60 * 1000);
     const endDateUTC = args.endDate - (offset * 60 * 1000);
 
-    // Get rollcall entries (using UTC-converted dates)
-    const rollcalls = await ctx.db.query("employeeRollcall")
-      .filter(q =>
-        q.and(
-          q.gte(q.field("createdAt"), startDateUTC),
-          q.lte(q.field("createdAt"), endDateUTC),
-          ...(args.employeeId ? [q.eq(q.field("employeeId"), args.employeeId)] : [])
-        )
+    // Same register scope as the stats cards (see getContributionData).
+    const scopedLogIds = await getScopedLogIds(ctx, userId, args.registerId, startDateUTC, endDateUTC);
+
+    const rollcalls = (await ctx.db.query("employeeRollcall")
+      .withIndex("byDate", q =>
+        q.gte("createdAt", startDateUTC).lte("createdAt", endDateUTC)
       )
-      .collect();
+      .collect()
+    ).filter(r =>
+      scopedLogIds.has(r.registerLogId.toString()) &&
+      (!args.employeeId || r.employeeId.toString() === args.employeeId.toString())
+    );
 
     // Get employee details for end times
     const employeeIds = [...new Set(rollcalls.map(r => r.employeeId.toString()))];
