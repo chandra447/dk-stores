@@ -26,3 +26,5 @@ dist-ssr
 .kilocode
 .agents
 skills-lock.json
+.codegraph
+.omp
